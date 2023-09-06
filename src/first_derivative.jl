@@ -1,10 +1,200 @@
 
-mutable struct SBP{T, Dim}
-    S::SVector{Dim, SparseMatrixCSC{T, Int64}}
-    bnd_pts::Array{Matrix{T}}
-    bnd_nrm::Array{Matrix{T}}
-    bnd_dof::Array{Vector{Int}}
-    bnd_prj::Array{Matrix{T}}
+
+"""
+Summation-by-parts first derivative operator
+
+`S[d]` holds the skew-symmetric part for direction `d`
+`E[b,d]` holds the symmetric part for boundary `b` and direction `d`
+"""
+mutable struct FirstDeriv{T, Dim}
+    S::SVector{Dim, SparseMatrixCSC{T, Int64}}    
+    E::Matrix{SparseMatrixCSC{T, Int64}}
+    #bnd_pts::Array{Matrix{T}}
+    #bnd_nrm::Array{Matrix{T}}
+    #bnd_dof::Array{Vector{Int}}
+    #bnd_prj::Array{Matrix{T}}
+end
+
+function build_first_deriv(root::Cell{Data, Dim, T, L}, levset::LevelSet{Dim,T},
+                           points, degree) where {Data, Dim, T, L}
+
+    # Step 1: refine based on points (and levset?)
+
+    # Step 2: mark cut cells and cut faces 
+    mark_cut_cells!(root, levset)
+
+    # Step 3: set up arrays to store sparse matrix information
+    rows = Array{Array{Int64}}(undef, Dim)
+    cols = Array{Array{Int64}}(undef, Dim)
+    Svals = Array{Array{T}}(undef, Dim)
+    for d = 1:Dim
+        rows[d] = zeros(Int, (0))
+        cols[d] = zeros(Int, (0))
+        Svals[d] = zeros(T, (0))
+    end
+
+    # Step 4: loop over cells and integrate volume integrals of bilinear form 
+    println("timing uncut_volume_integrate!...")
+    @time uncut_volume_integrate!(rows, cols, Svals, root, points, degree)
+    println("timing cut_volume_integrate!...")
+    @time cut_volume_integrate!(rows, cols, Svals, root, levset, points, degree)
+
+    # Step 5: loop over interfaces and integrate bilinear form 
+
+    # Step 6: loop over boundary faces and integrate bilinear form 
+
+    # Step 7: finalize construction 
+
+    # returns a FirstDeriv operator 
+end
+
+"""
+    uncut_volume_integrate!(rows, cols, Svals, root, points, degree)
+
+Integrates the volume integral portion of the weak derivative operators over 
+the cells identified as uncut and not immersed by their cooresponding data 
+fields.  The resulting integrals are stored in the `rows`, `cols`, and `Svals` 
+inputs; these inputs coorespond to the arrays that will later be used to 
+construct sparse matrices for the Sx, Sy, and Sz skew symmetric operators.  The 
+`root` input stores the tree mesh, the `points` array stores the DGD degree of 
+freedom locations, and `degree` is the polynomial degree of exactness.
+"""
+function uncut_volume_integrate!(rows, cols, Svals, root::Cell{Data, Dim, T, L},
+                                 points, degree) where {Data, Dim, T, L}
+    @assert(length(rows) == length(cols) == length(Svals) == Dim, 
+            "rows/cols/Svals inconsistent with Dim")
+
+    # find the maximum number of phi basis over all cells
+    max_basis = 0
+    for cell in allleaves(root)
+        max_basis = max(max_basis, length(cell.data.points))
+    end
+
+    # create some storage space 
+    x1d, w1d = lg_nodes(degree+1) # could also use lgl_nodes
+    wq = zeros(length(w1d)^Dim)
+    xq = zeros(Dim, length(wq))
+    phi = zeros(length(wq), max_basis, Dim+1)
+    Selem = zeros(max_basis, max_basis, Dim)
+    work = DGDWorkSpace{T,Dim}(degree, max_basis, length(wq))
+    
+    for cell in allleaves(root)
+        if cell.data.cut || cell.data.immersed
+            # do not integrate cells that have may be cut or immersed 
+            continue 
+        end 
+        # get the Gauss points on cell
+        quadrature!(xq, wq, cell.boundary, x1d, w1d)
+        # phi[:,:,:] is used to both the DGD basis and its derivatves at xq
+        dgd_basis!(phi, degree, view(points, :, cell.data.points), xq, work,
+                   Val(Dim))
+        num_basis = length(cell.data.points)
+        fill!(Selem, zero(T))
+        for i = 1:num_basis
+            for j = i+1:num_basis
+                # loop over the differentiation directions
+                for d = 1:Dim                    
+                    for q = 1:length(wq)                        
+                        Selem[i,j,d] += 0.5*(phi[q,i,1] * phi[q,j,1+d] - 
+                                             phi[q,j,1] * phi[q,i,1+d]) * wq[q]
+                    end
+                end
+            end 
+        end
+        # Now load into sparse-matrix arrays
+        for i = 1:length(cell.data.points)
+            row = cell.data.points[i]
+            for j = i+1:length(cell.data.points)
+                col = cell.data.points[j]
+                for d = 1:Dim
+                    if abs(Selem[i,j,d]) > 1e-13
+                        append!(rows[d], row)
+                        append!(cols[d], col)
+                        append!(Svals[d], Selem[i,j,d])
+                    end
+                end
+            end
+        end        
+    end
+    return nothing
+end
+
+"""
+    cut_volume_integrate!(rows, cols, Svals, root, levset, points, degree)
+
+Integrates the volume integral portion of the weak derivative operators over 
+the cells identified as cut by the appropriate data field.  The resulting 
+integrals are stored in the `rows`, `cols`, and `Svals` inputs; these inputs 
+correspond to the arrays that will later be used to construct sparse matrices 
+for the Sx, Sy, and Sz skew symmetric operators. The `root` input stores the 
+tree mesh, `levset` is the level-set data structure, `points` stores the DGD 
+degree of freedom locations, and `degree` is the polynomial degree of exactness.
+"""
+function cut_volume_integrate!(rows, cols, Svals,
+                               root::Cell{Data, Dim, T, L},
+                               levset::LevelSet{Dim,T}, points, degree
+                               ) where {Data, Dim, T, L}
+    @assert(length(rows) == length(cols) == length(Svals) == Dim, 
+            "rows/cols/Svals inconsistent with Dim")
+
+    # find the maximum number of phi basis over all cells
+    max_basis = 0
+    for cell in allleaves(root)
+        max_basis = max(max_basis, length(cell.data.points))
+    end
+    
+    clevset = @safe_cfunction( x -> norm(x), Cdouble, (Vector{Float64},));
+    #clevset = @safe_cfunction( x -> evallevelset(x, levset), Cdouble, 
+    #                          (Vector{Float64},))
+
+    # create some storage space    
+    Selem = zeros(max_basis, max_basis, Dim)
+
+    for cell in allleaves(root)
+        if !cell.data.cut || cell.data.immersed
+            # do not integrate cells that have been confirmed uncut or immersed
+            continue
+        end
+        println("Here I am!")
+
+        # get the quadrature rule for this cell 
+        wq, xq, surf_wts, surf_pts = calc_cut_quad(cell.boundary, clevset,
+                                                     degree+1, 
+                                                     fit_degree=2*degree)
+        # phi[:,:,:] is used to both the DGD basis and its derivatves at xq
+        phi = zeros(length(wq), max_basis, Dim+1)
+        work = DGDWorkSpace{T,Dim}(degree, max_basis, length(wq))
+        dgd_basis!(phi, degree, view(points, :, cell.data.points), xq, work,
+                   Val(Dim))
+        num_basis = length(cell.data.points)
+        fill!(Selem, zero(T))
+        for i = 1:num_basis
+            for j = i+1:num_basis
+                # loop over the differentiation directions
+                for d = 1:Dim                    
+                    for q = 1:length(wq)                        
+                        Selem[i,j,d] += 0.5*(phi[q,i,1] * phi[q,j,1+d] - 
+                                             phi[q,j,1] * phi[q,i,1+d]) * wq[q]
+                    end
+                end
+            end 
+        end
+        # Now load into sparse-matrix arrays
+        for i = 1:length(cell.data.points)
+            row = cell.data.points[i]
+            for j = i+1:length(cell.data.points)
+                col = cell.data.points[j]
+                for d = 1:Dim
+                    if abs(Selem[i,j,d]) > 1e-13
+                        append!(rows[d], row)
+                        append!(cols[d], col)
+                        append!(Svals[d], Selem[i,j,d])
+                    end
+                end
+            end
+        end        
+    end
+    return nothing 
 end
 
 function build_first_deriv(root::Cell{Data, Dim, T, L}, faces, points, degree

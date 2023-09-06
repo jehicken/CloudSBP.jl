@@ -3,189 +3,43 @@ using Test
 using RegionTrees
 using StaticArrays: SVector, @SVector
 using LinearAlgebra
-using Random 
+using Random
+using LevelSets
+using CxxWrap
 
 # Following StaticArrays approach of using repeatable "random" tests
 Random.seed!(42)
 
-
 # Need tests for the following files
-# * face.jl
 # * mass.jl 
 # * first_derivative.jl 
 
 
 @testset "CutDGD.jl" begin
     
-    @testset "test quadrature!: dimension $Dim, degree $degree" for Dim in 1:3, degree in 0:8
-        x1d, w1d = CutDGD.lg_nodes(degree+1) # could also use lgl_nodes
-        xq = zeros(Dim, length(x1d)^Dim)
-        wq = zeros(length(w1d)^Dim)
-        cell = Cell(SVector(ntuple(i -> 0.0, Dim)),
-                    SVector(ntuple(i -> 1.0, Dim)),
-                    CellData(Vector{Int}(), Vector{Face{2,Float64}}()))
-        CutDGD.quadrature!(xq, wq, cell.boundary, x1d, w1d)
-        integral = 0.0
-        for i = 1:size(xq,2)
-            intq = 1.0
-            for d = 1:Dim 
-                intq *= xq[d,i]^(2*degree+1)
-            end 
-            integral += wq[i]*intq 
-        end 
-        @test isapprox(integral, 1/(2*degree+2)^(Dim))
-    end 
-
-    @testset "test face_quadrature!: dimension $Dim, degree $degree, dir. $dir" for Dim in 1:3, degree in 0:4, dir in 1:Dim
-        x1d, w1d = CutDGD.lg_nodes(degree+1) # could also use lgl_nodes
-        xq = zeros(Dim, length(x1d)^(Dim-1))
-        wq = zeros(length(w1d)^(Dim-1))
-        face = Cell(SVector(ntuple(i -> 0.0, Dim)),
-                    SVector(ntuple(i -> i == dir ? 0.0 : 1.0, Dim)),
-                    CellData(Vector{Int}(), Vector{Face{2,Float64}}()))
-        CutDGD.face_quadrature!(xq, wq, face.boundary, x1d, w1d, dir)
-        integral = 0.0
-        tangent_indices = ntuple(i -> i >= dir ? i+1 : i, Dim-1)
-        for i = 1:size(xq,2)
-            intq = 1.0
-            for d in tangent_indices 
-                intq *= xq[d,i]^(2*degree+1)
-            end 
-            integral += wq[i]*intq 
-        end 
-        @test isapprox(integral, 1/(2*degree+2)^(Dim-1))
-    end 
-
-    @testset "test orthogonal polynomials" begin 
-
-        @testset "test proriol_poly in two dimensions" begin
-            degree = 4
-            x1d, w1d = CutDGD.lg_nodes(degree+1)
-            # compute Gauss-Legendre quadrature points for a degenerate square
-            ptr = 1
-            wq = zeros(length(x1d)^2)
-            xq = zeros(2, length(wq))
-            for j = 1:length(x1d)
-                for i = 1:length(x1d)
-                    xq[2,ptr] = x1d[j]
-                    xq[1,ptr] = 0.5*(1 - xq[2,ptr])*x1d[i] - 0.5*(xq[2,ptr]+1)
-                    wq[ptr] = w1d[j]*0.5*(1 - xq[2,ptr])*w1d[i]
-                    ptr += 1
-                end
-            end
-            # evaluate Proriol orthogonal polynomials up to degree
-            num_basis = binomial(2 + degree, 2)
-            P = zeros(length(wq), num_basis)
-            work = zeros(3*length(wq))
-            ptr = 1
-            for r = 0:degree
-                for j = 0:r
-                    i = r-j                    
-                    CutDGD.proriol_poly!(view(P, :, ptr), xq[1,:], xq[2,:], i, 
-                                        j, work)
-                    ptr += 1
-                end
-            end
-            # verify that integral inner products produce identity
-            innerprod = P'*diagm(wq)*P
-            @test isapprox(innerprod, Matrix(1.0I, num_basis, num_basis))
-            # this should also work with poly_basis!
-            CutDGD.poly_basis!(P, degree, xq, work, Val(2))
-            innerprod = P'*diagm(wq)*P
-            @test isapprox(innerprod, Matrix(1.0I, num_basis, num_basis))
-        end
-
-        @testset "test proriol_poly in three dimensions" begin
-            degree = 4 
-            x1d, w1d = CutDGD.lg_nodes(2*degree)
-            # compute Gauss-Legendre quadrature points for a degenerate cube
-            ptr = 1
-            wq = zeros(length(x1d)^3)
-            xq = zeros(3, length(wq))
-            for k = 1:length(x1d)
-                for j = 1:length(x1d)
-                    for i = 1:length(x1d)
-                        xq[3,ptr] = x1d[k]
-                        xq[2,ptr] = 0.5*(1 + x1d[j])*(1 - xq[3,ptr]) - 1
-                        xq[1,ptr] = -1-0.5*(1 + x1d[i])*(xq[2,ptr] + xq[3,ptr])
-                        wq[ptr] = -0.25*(1 - xq[3,ptr])*
-                            (xq[2,ptr] + xq[3,ptr])*w1d[i]*w1d[j]*w1d[k]
-                        ptr += 1
-                    end
-                end
-            end
-            # evaluate Proriol orthogonal polynomials up to degree
-            num_basis = binomial(3 + degree, 3)
-            P = zeros(length(wq), num_basis)
-            work = zeros(4*length(wq))
-            ptr = 1
-            for r = 0:degree
-                for k = 0:r
-                    for j = 0:r-k
-                        i = r-j-k
-                        CutDGD.proriol_poly!(view(P, :, ptr), xq[1,:], xq[2,:],
-                                            xq[3,:], i, j, k,work)                              
-                        ptr += 1
-                    end
-                end
-            end
-            # verify that integral inner products produce identity
-            innerprod = P'*diagm(wq)*P
-            @test isapprox(innerprod, Matrix(1.0I, num_basis, num_basis))
-            # this should also work with poly_basis!
-            CutDGD.poly_basis!(P, degree, xq, work, Val(3))
-            innerprod = P'*diagm(wq)*P
-            @test isapprox(innerprod, Matrix(1.0I, num_basis, num_basis))
-        end
-
-        @testset "test diff_proriol_poly! in two dimension" begin
-            degree = 4
-            x1d, w1d = CutDGD.lg_nodes(degree+1)
-            # compute Gauss-Legendre quadrature points for a degenerate square
-            ptr = 1
-            x = zeros(2, length(x1d)^2)
-            for j = 1:length(x1d)
-                for i = 1:length(x1d)
-                    x[2,ptr] = x1d[j]
-                    x[1,ptr] = 0.5*(1 - x[2,ptr])*x1d[i] - 0.5*(x[2,ptr]+1)
-                    ptr += 1
-                end
-            end
-
-            dV = zeros(size(x,2), binomial(degree+2,2), 2)
-            CutDGD.poly_basis_derivatives!(dV, degree, x, Val(2))
-            # test the derivatives using the copmlex-step method 
-            eps_step = 1e-60
-            num_basis = binomial(degree + 2, 2)
-            dP = zeros(size(x,2), 2)
-            xc = similar(x, ComplexF64)
-            Pc = zeros(ComplexF64, size(x,2))
-            work = zeros(ComplexF64, 3*size(x,2))
-            ptr = 1
-            for r = 0:degree
-                for j = 0:r
-                    i = r-j
-                    CutDGD.diff_proriol_poly!(dP, view(x,1,:), view(x,2,:), i, j)
-                    xc[:,:] = x[:,:]
-                    xc[2,:] .-= complex(0.0, eps_step)
-                    CutDGD.proriol_poly!(Pc, view(xc,1,:), view(xc,2,:), i, j,
-                                        work)
-                    @test isapprox(-imag(Pc)/eps_step, dP[:,2], atol=1e-13)
-                    @test isapprox(-imag(Pc)/eps_step, dV[:,ptr,2], atol=1e-13)
-                    xc[1,:] .-= complex(0.0, eps_step)
-                    CutDGD.proriol_poly!(Pc, view(xc,1,:), view(xc,2,:), i, j,
-                                        work)
-                    @test isapprox(-imag(Pc)/eps_step - dP[:,2], dP[:,1], 
-                                   atol=1e-13)
-                    @test isapprox(-imag(Pc)/eps_step - dP[:,2], dV[:,ptr,1],
-                                   atol=1e-13)
-                    ptr += 1
-                end
-            end
-        end
-
+    if false
+    @testset "test quadrature routines" begin 
+        include("test_quadrature.jl")
     end
 
+    @testset "test orthogonal polynomials" begin 
+        include("test_orthopoly.jl")
+    end
+
+    @testset "test face-related routines" begin 
+        include("test_face.jl")
+    end
+
+    @testset "test mesh routines" begin 
+        include("test_mesh.jl")
+    end 
+    end 
+
+    @testset "test first-derivative routines" begin 
+        include("test_first_derivative.jl")
+    end
+
+    if false
     @testset "test dgd_basis!" begin
 
         @testset "one-dimensional basis: degree $degree" for degree in 0:4
@@ -417,6 +271,7 @@ Random.seed!(42)
         end
 
     end # test dgd_basis!
+    end 
 
     # @testset "test diagonal mass matrix" begin
 

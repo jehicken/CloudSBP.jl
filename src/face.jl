@@ -1,4 +1,7 @@
 
+"""
+Struct for interfaces and boundary faces of cells.
+"""
 mutable struct Face{N, T, Cell}
     dir::Int
     boundary::HyperRectangle{N, T}
@@ -8,7 +11,7 @@ end
 """
     f = Face(dir, origin, widths [, data=nothing])
 
-Constructe a face with normal direction index `dir`, with corner at `origin`, 
+Construct a face with normal direction index `dir`, with corner at `origin`, 
 and having `widths` dimensions. 
 """
 function Face(dir::Int, origin::SVector{N, T}, widths::SVector{N, T}, 
