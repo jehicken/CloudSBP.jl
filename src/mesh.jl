@@ -101,7 +101,8 @@ Returns a `CellData` struct based on the given `cell`.
 """
 function get_data(cell, child_indices)
     return CellData(deepcopy(cell.data.points), 
-                    deepcopy(cell.data.faces), cell.data.cut)
+                    deepcopy(cell.data.faces), cell.data.cut,
+                    cell.data.immersed)
 end
 
 """
@@ -146,7 +147,7 @@ Returns data for child of `cell` with `indices`.
 function refine_data(r::PointRefinery, cell::Cell, indices)
     child_bnd = child_boundary(cell, indices)
     return CellData(get_points_inside(child_bnd, r.x_view,
-                    cell.data.points), deepcopy(cell.data.faces), false)
+                    cell.data.points), deepcopy(cell.data.faces), false, false)
 end
 
 """
@@ -177,7 +178,7 @@ function build_nn_stencils!(root, points, degree)
     sortres = true
     for leaf in allleaves(root)
         # the `degree^2` below was found using experiments on uniform grids
-        num_nbr = binomial(dim + degree, dim) + degree # + degree^2
+        num_nbr = binomial(dim + degree, dim) + degree^2 
         #num_nbr = (degree+1)^dim
         xc = center(leaf)
         indices, dists = knn(kdtree, xc, num_nbr, sortres)
