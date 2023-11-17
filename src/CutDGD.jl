@@ -28,5 +28,6 @@ include("mesh.jl")
 include("dgd_basis.jl")
 include("mass.jl")
 include("first_derivative.jl")
+include("norm.jl")
 
 end
