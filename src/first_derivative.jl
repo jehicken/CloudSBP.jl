@@ -28,9 +28,9 @@ function build_first_deriv(root::Cell{Data, Dim, T, L}, levset::LevelSet{Dim,T},
     cols = Array{Array{Int64}}(undef, Dim)
     Svals = Array{Array{T}}(undef, Dim)
     for d = 1:Dim
-        rows[d] = zeros(Int, (0))
-        cols[d] = zeros(Int, (0))
-        Svals[d] = zeros(T, (0))
+        rows[d] = Int[]
+        cols[d] = Int[] 
+        Svals[d] = T[]
     end
 
     # Step 4: loop over cells and integrate volume integrals of bilinear form 
@@ -119,6 +119,10 @@ function uncut_volume_integrate!(rows, cols, Svals, root::Cell{Data, Dim, T, L},
     return nothing
 end
 
+# Module variable used to store a reference to the levset;
+# this is needed for the @safe_cfunction macro
+const mod_levset = Ref{Any}()
+
 """
     cut_volume_integrate!(rows, cols, Svals, root, levset, points, degree)
 
@@ -143,9 +147,9 @@ function cut_volume_integrate!(rows, cols, Svals,
         max_basis = max(max_basis, length(cell.data.points))
     end
     
-    clevset = @safe_cfunction( x -> norm(x), Cdouble, (Vector{Float64},));
-    #clevset = @safe_cfunction( x -> evallevelset(x, levset), Cdouble, 
-    #                          (Vector{Float64},))
+    mod_levset[] = levset
+    safe_clevset = @safe_cfunction( 
+        x -> evallevelset(x, mod_levset[]), Cdouble, (Vector{Float64},))
 
     # create some storage space    
     Selem = zeros(max_basis, max_basis, Dim)
@@ -158,7 +162,7 @@ function cut_volume_integrate!(rows, cols, Svals,
         println("Here I am!")
 
         # get the quadrature rule for this cell 
-        wq, xq, surf_wts, surf_pts = calc_cut_quad(cell.boundary, clevset,
+        wq, xq, surf_wts, surf_pts = calc_cut_quad(cell.boundary, safe_clevset,
                                                      degree+1, 
                                                      fit_degree=2*degree)
         # phi[:,:,:] is used to both the DGD basis and its derivatves at xq

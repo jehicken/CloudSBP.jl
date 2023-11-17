@@ -1,11 +1,12 @@
 using CutDGD
 using Test
 using RegionTrees
-using StaticArrays: SVector, @SVector
+using StaticArrays: SVector, @SVector, MVector
 using LinearAlgebra
 using Random
 using LevelSets
 using CxxWrap
+using SparseArrays
 
 # Following StaticArrays approach of using repeatable "random" tests
 Random.seed!(42)
