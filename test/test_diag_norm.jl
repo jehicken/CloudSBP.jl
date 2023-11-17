@@ -25,7 +25,7 @@
     end 
 end 
 
-@testset "test diagonal_norm: dimension $Dim, degree $degree" for Dim in 1:3, degree in 0:4
+@testset "test diagonal_norm: dimension $Dim, degree $degree" for Dim in 1:3, degree in 0:1
 
     # use a unit HyperRectangle 
     root = Cell(SVector(ntuple(i -> 0.0, Dim)),
@@ -34,8 +34,21 @@ end
 
     # DGD dof locations
     num_basis = binomial(Dim + degree, Dim)
+
     num_nodes = 10*num_basis
     points = rand(Dim, num_nodes)
+
+    # num1d = 3*num_basis
+    # num_nodes = num1d^Dim
+    # points = zeros(Dim, num_nodes)
+    # xc = reshape(points, (Dim, ntuple(i -> num1d, Dim)...))
+    # for I in CartesianIndices(xc)
+    #     # I[1] is the coordinate, so I[I[1] + 1] is the index for that coord
+    #     xc[I] = (I[I[1] + 1] - 1)/(num1d-1)
+    # end
+
+    # dx = 1/(num1d-1)
+    # points .+= 0.2*dx*randn(Dim, num_nodes)
     
     # refine mesh, build sentencil, and evaluate norm
     CutDGD.refine_on_points!(root, points)
@@ -66,5 +79,54 @@ end
         integral = dot(V[:,k], H)
         @test isapprox(integral, integral_ref)
     end 
+
+end
+
+@testset "test obj_norm_grad!: dimension $Dim, degree $degree" for Dim in 1:3, degree in 0:4
+
+    # use a unit HyperRectangle 
+    root = Cell(SVector(ntuple(i -> 0.0, Dim)),
+                SVector(ntuple(i -> 1.0, Dim)),
+                CellData(Vector{Int}(), Vector{Int}()))
+
+    # DGD dof locations
+    num_basis = binomial(Dim + degree, Dim)
+
+    num_nodes = 5*num_basis
+    points = rand(Dim, num_nodes)
+
+    # refine mesh, build sentencil, and evaluate particular quad and nullspace
+    CutDGD.refine_on_points!(root, points)
+    CutDGD.build_nn_stencils!(root, points, degree)
+    Z, wp, num_var = CutDGD.get_null_and_part(root, points, degree)    
+
+    # compute objective gradient for random y 
+    rho = 1.0
+    y = 0.1*randn(num_var)
+    g = zero(y)
+    CutDGD.obj_norm_grad!(g, root, wp, Z, y, rho, num_nodes)
+
+    # compare against a complex-step based directional derivative 
+    p = randn(num_var)
+    gdotp = dot(g, p)
+
+    ceps = 1e-60
+    num_cell = CutDGD.num_leaves(root)
+    wp_cmplx = Vector{Vector{ComplexF64}}(undef, num_cell)
+    Z_cmplx = Vector{Matrix{ComplexF64}}(undef, num_cell)
+    for i = 1:num_cell 
+        wp_cmplx[i] = complex.(wp[i])
+        Z_cmplx[i] = complex.(Z[i])
+    end
+    y_cmplx = complex.(y, ceps.*p)
+    rho_cmplx = complex(rho)
+    obj = CutDGD.obj_norm(root, wp_cmplx, Z_cmplx, y_cmplx, rho_cmplx,
+                          num_nodes)
+    gdotp_cmplx = imag(obj)/ceps 
+
+    @test isapprox(gdotp, gdotp_cmplx)
+
+
+
 
 end

@@ -178,7 +178,7 @@ function build_nn_stencils!(root, points, degree)
     sortres = true
     for leaf in allleaves(root)
         # the `degree^2` below was found using experiments on uniform grids
-        num_nbr = binomial(dim + degree, dim) + degree^2 
+        num_nbr = binomial(dim + degree, dim) + degree #+ degree^2 # + degree
         #num_nbr = (degree+1)^dim
         xc = center(leaf)
         indices, dists = knn(kdtree, xc, num_nbr, sortres)
