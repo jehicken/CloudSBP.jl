@@ -30,8 +30,8 @@ function cell_quadrature(degree, xc, xq, wq, ::Val{Dim}) where {Dim}
         xq_trans[I] = (xq[I] - xavg[I[1]])/dx[I[1]] - 0.5
     end
     # evaluate the polynomial basis at the quadrature and node points 
-    workc = zeros((Dim+1)*num_nodes)
-    V = zeros(num_nodes, num_basis)
+    workc = zeros(eltype(xc), (Dim+1)*num_nodes)
+    V = zeros(eltype(xc), num_nodes, num_basis)
     poly_basis!(V, degree, xc_trans, workc, Val(Dim))
     workq = zeros((Dim+1)*num_quad)
     Vq = zeros(num_quad, num_basis)
@@ -41,58 +41,124 @@ function cell_quadrature(degree, xc, xq, wq, ::Val{Dim}) where {Dim}
     for i = 1:num_basis
         b[i] = dot(Vq[:,i], wq)
     end
+    # complex-step does not play nice with pseudo-inverse
+    # w = pinv(transpose(V))*b 
+    #lambda = -(transpose(V)*V)\b 
+    #w = -V*lambda
+    A = [diagm(ones(num_nodes)) V; transpose(V) zeros(num_basis, num_basis)]
+    c = [zeros(num_nodes); b]
+    y = A\c 
+    w = y[1:num_nodes]
+    return w
+end
 
-    # find the scaling factors 
-    dx = 1e16*ones(num_nodes)
-    for i = 1:num_nodes
-        for j = 1:num_nodes 
-            if i == j 
-                continue 
-            end
-            dist = norm(xc_trans[:,j] - xc_trans[:,i])
-            dist < dx[i] ? dx[i] = dist : nothing 
-        end 
+"""
+    cell_quadrature_rev!(xc_bar, degree, xc, xq, wq, w_bar, Val(Dim))
+
+Reverse mode differentiated `cell_quadrature`.  Returns the derivatives of 
+`dot(w, w_bar)` with respect to `xc` in the array `xc_bar`.  All other inputs are the same as `cell_quadrature`.
+"""
+function cell_quadrature_rev!(xc_bar, degree, xc, xq, wq, w_bar, ::Val{Dim}
+                              ) where {Dim}
+    @assert( size(xc,1) == size(xq,1) == Dim, "xc/xq/Dim are inconsistent")
+    @assert( size(xq,2) == size(wq,1), "xq and wq have inconsistent sizes")
+    num_basis = binomial(Dim + degree, Dim)
+    num_nodes = size(xc, 2)
+    num_quad = size(xq, 2)
+    @assert( num_nodes >= num_basis, "fewer nodes than basis functions")
+
+    # forward sweep
+
+    # apply an affine transformation to the points xc and xq
+    lower = minimum([real.(xc) real.(xq)], dims=2)
+    upper = maximum([real.(xc) real.(xq)], dims=2)
+    dx = upper - lower 
+    xavg = 0.5*(upper + lower)
+    xavg .*= 0.0
+    dx[:] .*= 1.001
+    xc_trans = zero(xc)
+    for I in CartesianIndices(xc)
+        xc_trans[I] = (xc[I] - xavg[I[1]])/dx[I[1]] - 0.5
     end
-    dx = dx.^Dim 
-    #dx = sqrt.(dx)
-    #dx = 1.0./dx
-    #dx = dx.^2
+    xq_trans = zero(xq)
+    for I in CartesianIndices(xq)
+        xq_trans[I] = (xq[I] - xavg[I[1]])/dx[I[1]] - 0.5
+    end
+    # evaluate the polynomial basis at the quadrature and node points 
+    workc = zeros((Dim+1)*num_nodes)
+    V = zeros(num_nodes, num_basis)
+    poly_basis!(V, degree, xc_trans, workc, Val(Dim))
+    dV = zeros(num_nodes, num_basis, Dim)
+    poly_basis_derivatives!(dV, degree, xc_trans, Val(Dim))
+    workq = zeros((Dim+1)*num_quad)
+    Vq = zeros(num_quad, num_basis)
+    poly_basis!(Vq, degree, xq_trans, workq, Val(Dim))
+    # integrate the polynomial basis using the given quadrature
+    b = zeros(num_basis)
+    for i = 1:num_basis
+        b[i] = dot(Vq[:,i], wq)
+    end
+    lambda = -(transpose(V)*V)\b 
+    w = -V*lambda
+    #w = pinv(transpose(V))*b 
 
-    A = V'*diagm(dx)
-    w = A\b 
-    return diagm(dx)*w 
-
-    #w = pinv(V')*b
-    #w = V'\b
-    #R = diagm(ones(num_nodes).*(prod(dx)/num_nodes))
-    #w = R*V*((V'*R*V)\b)
-    #@assert( norm(V'*w - b) < (1e-15)*(10^degree),
-    #         "quadrature is not accurate!" )
-    #if norm(V'*w - b) > (1e-15)*(10^degree)
-    #    println("WARNING: quadrature is not accurate! res = ", norm(V'*w - b))
-    #end
-    #return w
+    # reverse sweep 
+    #adj = -transpose(pinv(transpose(V)))*w_bar
+    adj1 = -(transpose(V)*V) \ (transpose(V)*w_bar) # size = num_basis
+    adj2 = -w_bar - V*adj1  # size = num_nodes 
+    for d = 1:Dim 
+        #xc_bar[d,:] += w .* (dV[:,:,d]*adj)/dx[d]
+        xc_bar[d,:] += (adj2 .* (dV[:,:,d]*lambda) + w .* (dV[:,:,d]*adj1))/dx[d]
+    end
+    return nothing
 end
 
 function diagonal_norm(root::Cell{Data, Dim, T, L}, points, degree
                        ) where {Data, Dim, T, L}
     num_nodes = size(points, 2)
-    H = zeros(T, num_nodes)
-    # find the maximum number of phi basis over all cells
+    H = zeros(eltype(points), num_nodes)
     x1d, w1d = lg_nodes(degree+1) # could also use lgl_nodes                   
     wq = zeros(length(w1d)^Dim)
     xq = zeros(Dim, length(wq))
     for cell in allleaves(root)
         # get the nodes in this cell's stencil, and an accurate quaduature
-        nodes = copy(points[:, cell.data.points])
+        #nodes = copy(points[:, cell.data.points])
+        nodes = view(points, :, cell.data.points)
         quadrature!(xq, wq, cell.boundary, x1d, w1d)
         # get cell quadrature and add to global norm
         w = cell_quadrature(degree, nodes, xq, wq, Val(Dim))
+        #w = nodes[Dim,:].*nodes[1,:]
         for i = 1:length(cell.data.points)
             H[cell.data.points[i]] += w[i]
         end
     end
     return H
+end
+
+function diagonal_norm_rev!(points_bar, root::Cell{Data, Dim, T, L}, points, 
+                            degree, H_bar) where {Data, Dim, T, L}
+    num_nodes = size(points, 2)
+    fill!(points_bar, zero(T))    
+    x1d, w1d = lg_nodes(degree+1) # could also use lgl_nodes                   
+    wq = zeros(length(w1d)^Dim)
+    xq = zeros(Dim, length(wq))
+    for cell in allleaves(root)
+        # get the nodes in this cell's stencil, and an accurate quaduature
+        #nodes = copy(points[:, cell.data.points])
+        nodes = view(points, :, cell.data.points)
+        quadrature!(xq, wq, cell.boundary, x1d, w1d)
+        w_bar = zeros(length(cell.data.points))
+        for i = 1:length(cell.data.points)
+            # H[cell.data.points[i]] += w[i]
+            w_bar[i] = H_bar[cell.data.points[i]]
+        end
+        nodes_bar = view(points_bar, :, cell.data.points)
+        # w = cell_quadrature(degree, nodes, xq, wq, Val(Dim))
+        cell_quadrature_rev!(nodes_bar, degree, nodes, xq, wq, w_bar, Val(Dim))
+        #nodes_bar[Dim,:] += w_bar[:].*nodes[1,:]
+        #nodes_bar[1,:] += w_bar[:].*nodes[Dim,:]
+    end
+    return nothing
 end
 
 """
@@ -254,6 +320,73 @@ function obj_norm_grad!(g::AbstractVector{T}, root::Cell{Data, Dim, T, L},
         num_dof = size(Z[c],2)
         g[ptr+1:ptr+num_dof] += Z[c]'*w_bar
         ptr += num_dof
+    end
+    return nothing
+end 
+
+function penalty(root::Cell{Data, Dim, T, L}, xc, xc_init, dist_ref, mu, degree
+                 )  where {Data, Dim, T, L}
+    num_nodes = size(xc, 2)
+    # compute the norm part of the penalty
+    phi = 0.0
+    for i = 1:num_nodes 
+        dist = 0.0
+        for d = 1:Dim 
+            dist += (xc[d,i] - xc_init[d,i])^2
+        end 
+        phi += dist/(dist_ref[i]^2)
+    end
+
+    # compute the diagonal norm based on x 
+    H = diagonal_norm(root, xc, degree)
+
+    # add the penalties 
+    for i = 1:num_nodes 
+        H_ref = dist_ref[i]^Dim
+        if real(H[i]) < H_ref
+            phi += mu*(H[i]/H_ref - 1)^2
+        end 
+    end
+
+    phi *= 0.5
+    return phi
+end
+
+function penalty_grad!(g::AbstractVector{T}, root::Cell{Data, Dim, T, L}, 
+                       xc, xc_init, dist_ref, mu, degree
+                       )  where {Data, Dim, T, L}
+    num_nodes = size(xc, 2)
+    # need the diagonal norm for the reverse sweep 
+    H = diagonal_norm(root, xc, degree)
+
+    # start the reverse sweep 
+    fill!(g, zero(T))
+    # return phi
+    # phi *= 0.5 
+    phi_bar = 0.5 
+    # add the penalties 
+    H_bar = zero(H)
+    for i = 1:num_nodes 
+        H_ref = dist_ref[i]^Dim
+        if real(H[i]) < H_ref
+            # phi += mu*(H[i]/H_ref - 1)^2
+            H_bar[i] += phi_bar*2.0*mu*(H[i]/H_ref - 1)/H_ref
+        end 
+    end
+
+    # compute the diagonal norm based on x 
+    #H = diagonal_norm(root, xc, degree)
+    xc_bar = reshape(g, size(xc))
+    diagonal_norm_rev!(xc_bar, root, xc, degree, H_bar)
+
+    # compute the norm part of the penalty
+    for i = 1:num_nodes 
+        # phi += dist/(dist_ref[i]^2)
+        dist_bar = phi_bar/(dist_ref[i]^2)
+        for d = 1:Dim 
+            # dist += (xc[d,i] - xc_init[d,i])^2
+            xc_bar[d,i] += dist_bar*2.0*(xc[d,i] - xc_init[d,i])
+        end 
     end
     return nothing
 end 
