@@ -41,15 +41,21 @@ function cell_quadrature(degree, xc, xq, wq, ::Val{Dim}) where {Dim}
     for i = 1:num_basis
         b[i] = dot(Vq[:,i], wq)
     end
+    F = qr(V)
+    Q = Matrix(F.Q)
+    Rt_inv = transpose(inv(F.R))
+    w = Q * Rt_inv * b
+    return w
+
     # complex-step does not play nice with pseudo-inverse
     # w = pinv(transpose(V))*b 
     #lambda = -(transpose(V)*V)\b 
     #w = -V*lambda
-    A = [diagm(ones(num_nodes)) V; transpose(V) zeros(num_basis, num_basis)]
-    c = [zeros(num_nodes); b]
-    y = A\c 
-    w = y[1:num_nodes]
-    return w
+    # A = [diagm(ones(num_nodes)) V; transpose(V) zeros(num_basis, num_basis)]
+    # c = [zeros(num_nodes); b]
+    # y = A\c 
+    # w = y[1:num_nodes]
+    # return w
 end
 
 """
@@ -98,18 +104,39 @@ function cell_quadrature_rev!(xc_bar, degree, xc, xq, wq, w_bar, ::Val{Dim}
     for i = 1:num_basis
         b[i] = dot(Vq[:,i], wq)
     end
-    lambda = -(transpose(V)*V)\b 
-    w = -V*lambda
+
+    # w = pinv(transpose(V))*b
+    # psi = -pinv(transpose(V))'*w_bar 
+    # for d = 1:Dim
+    #     xc_bar[d,:] += w.*dV[:,:,d]*psi
+    # end
+
+    F = qr(V)
+    Q = Matrix(F.Q)
+    Rt_inv = inv(F.R)'
+    w = Q * Rt_inv * b
+
+    # reverse sweep 
+    Q_bar = w_bar * b' * Rt_inv'
+    R_bar = - Rt_inv' * (b * w_bar' * Q) * Rt_inv'
+    L = tril(F.R * R_bar' - R_bar * F.R' + Q'*Q_bar - Q_bar'*Q, -1)
+    V_bar = Q * (R_bar + L * Rt_inv) + (Q_bar - Q*Q'*Q_bar) * Rt_inv 
+    for d = 1:Dim
+        xc_bar[d,:] += sum(V_bar[:,:].*dV[:,:,d],dims=2)
+    end
+
+    #lambda = -(transpose(V)*V)\b 
+    #w = -V*lambda
     #w = pinv(transpose(V))*b 
 
     # reverse sweep 
     #adj = -transpose(pinv(transpose(V)))*w_bar
-    adj1 = -(transpose(V)*V) \ (transpose(V)*w_bar) # size = num_basis
-    adj2 = -w_bar - V*adj1  # size = num_nodes 
-    for d = 1:Dim 
-        #xc_bar[d,:] += w .* (dV[:,:,d]*adj)/dx[d]
-        xc_bar[d,:] += (adj2 .* (dV[:,:,d]*lambda) + w .* (dV[:,:,d]*adj1))/dx[d]
-    end
+    #adj1 = -(transpose(V)*V) \ (transpose(V)*w_bar) # size = num_basis
+    #adj2 = -w_bar - V*adj1  # size = num_nodes 
+    #for d = 1:Dim 
+    #    #xc_bar[d,:] += w .* (dV[:,:,d]*adj)/dx[d]
+    #    xc_bar[d,:] += (adj2 .* (dV[:,:,d]*lambda) + w .* (dV[:,:,d]*adj1))/dx[d]
+    #end
     return nothing
 end
 
