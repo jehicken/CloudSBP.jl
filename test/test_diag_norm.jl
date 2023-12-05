@@ -1,5 +1,28 @@
 # Tests related to diagonal norm construction 
 
+@testset "test solve_min_norm!" begin
+    num_eq = 10
+    num_dof = 50
+    V = randn(num_dof,num_eq)
+    w = zeros(num_dof)
+    b = randn(num_eq)
+    
+    eps_fd = 1e-6
+    CutDGD.solve_min_norm!(w, V, b)
+    V_pert = randn(size(V))
+    w_pert = zero(w)
+    CutDGD.solve_min_norm!(w_pert, V + eps_fd*V_pert, b)
+    w_bar = randn(size(w))
+    dot_fd = dot(w_bar, (w_pert - w)/eps_fd)
+    
+    V_bar = zero(V)
+    CutDGD.solve_min_norm_rev!(V_bar, w_bar, V, b)
+    dot_rev = sum(V_bar .* V_pert)
+    
+    @test isapprox(dot_rev, dot_fd, atol=1e-5)
+end
+
+
 @testset "test cell_quadrature: dimension $Dim, degree $degree" for Dim in 1:3, degree in 0:4
     num_basis = binomial(Dim + degree, Dim)
     num_nodes = num_basis
@@ -112,7 +135,6 @@ end
 end
 
 @testset "test diagonal_norm_rev!: dimension $Dim, degree $degree" for Dim in 1:3, degree in 0:4
-
     # use a unit HyperRectangle 
     root = Cell(SVector(ntuple(i -> 0.0, Dim)),
                 SVector(ntuple(i -> 1.0, Dim)),
@@ -189,39 +211,38 @@ end
 
 end
 
-# @testset "test penalty_grad!: dimension $Dim, degree $degree" for Dim in 1:3, degree in 0:4
+@testset "test penalty_grad!: dimension $Dim, degree $degree" for Dim in 1:3, degree in 0:4
 
-#     # use a unit HyperRectangle 
-#     root = Cell(SVector(ntuple(i -> 0.0, Dim)),
-#                 SVector(ntuple(i -> 1.0, Dim)),
-#                 CellData(Vector{Int}(), Vector{Int}()))
+    # use a unit HyperRectangle 
+    root = Cell(SVector(ntuple(i -> 0.0, Dim)),
+                SVector(ntuple(i -> 1.0, Dim)),
+                CellData(Vector{Int}(), Vector{Int}()))
 
-#     # DGD dof locations
-#     num_basis = binomial(Dim + degree, Dim)
+    # DGD dof locations
+    num_basis = binomial(Dim + degree, Dim)
 
-#     num_nodes = 5*num_basis
-#     points = rand(Dim, num_nodes)
-#     points_init = points + 0.05*rand(Dim, num_nodes)
+    num_nodes = 5*num_basis
+    points = rand(Dim, num_nodes)
+    points_init = points + 0.05*rand(Dim, num_nodes)
 
-#     # refine mesh and build stencil
-#     CutDGD.refine_on_points!(root, points)
-#     CutDGD.build_nn_stencils!(root, points, degree)
+    # refine mesh and build stencil
+    CutDGD.refine_on_points!(root, points)
+    CutDGD.build_nn_stencils!(root, points, degree)
 
-#     # compute the penalty gradient 
-#     mu = 1.0
-#     g = zeros(Dim*num_nodes)
-#     dist_ref = ones(num_nodes)    
-#     CutDGD.penalty_grad!(g, root, points, points_init, dist_ref, mu, degree)
+    # compute the penalty gradient 
+    mu = 1.0
+    g = zeros(Dim*num_nodes)
+    dist_ref = ones(num_nodes)    
+    CutDGD.penalty_grad!(g, root, points, points_init, dist_ref, mu, degree)
 
-#     # compare against a complex-step based directional derivative 
-#     p = randn(length(g))
-#     gdotp = dot(g, p)
+    # compare against a complex-step based directional derivative 
+    p = randn(length(g))
+    gdotp = dot(g, p)
 
-#     ceps = 1e-60
-#     points_cmplx = complex.(points, ceps.*reshape(p, size(points)))
-#     penalty = CutDGD.penalty(root, points_cmplx, points_init, dist_ref, mu, degree)
-#     gdotp_cmplx = imag(penalty)/ceps 
+    ceps = 1e-60
+    points_cmplx = complex.(points, ceps.*reshape(p, size(points)))
+    penalty = CutDGD.penalty(root, points_cmplx, points_init, dist_ref, mu, degree)
+    gdotp_cmplx = imag(penalty)/ceps 
 
-#     @test isapprox(gdotp, gdotp_cmplx)
-
-# end
+    @test isapprox(gdotp, gdotp_cmplx)
+end

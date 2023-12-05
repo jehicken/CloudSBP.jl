@@ -1,5 +1,59 @@
 # Routines related to constructing a diagonal norm
 
+"""
+    solve_min_norm!(w, V, b)
+
+Finds the minimum norm solution to `transpose(V) w = b`.
+"""
+function solve_min_norm!(w, V, b)
+    F = qr(V)
+    Q = Matrix(F.Q) # If using Q directly, restrict to first length(b) cols 
+    w .= Q * (F.R' \ b)
+    return nothing
+end
+
+"""
+    solve_min_norm_diff!(w, dw, V, dV, b)
+
+Forward mode of `solve_min_norm!` treating `b` as constant.  This is useful
+for verifying the reverse mode implementation.
+"""
+function solve_min_norm_diff!(w, dw, V, dV, b)
+    F = qr(V)
+    Q = Matrix(F.Q)
+    Rb = F.R' \ b
+    w .= Q * Rb
+    QdV = Q'*dV
+    QdVR = QdV / F.R 
+    X = tril(QdVR,-1)
+    X = X - X'
+    dQ = Q*X + dV / F.R - Q*QdVR
+    dR = QdV - X*F.R
+    dw .= dQ * Rb - Q * (F.R' \ (dR' * Rb) )
+    return nothing 
+end 
+
+"""
+    solve_min_norm_rev!(V_bar, w_bar, V, b)
+
+Reverse mode of `solve_min_norm!`.  On entry, `w_bar` holds the derivatives of
+the objective w.r.t. the weights.  On exit, `V_bar` holds the derivatives of the
+objective w.r.t. the matrix `V`.
+"""
+function solve_min_norm_rev!(V_bar, w_bar, V, b)
+    F = qr(V)
+    Q = Matrix(F.Q)
+    Rtb = F.R' \ b
+    # w .= Q * Rtb 
+    Q_bar = w_bar * Rtb'
+    Rtb_bar = Q' * w_bar
+    # Rtb = Rt \ b    
+    R_bar = -(F.R \ Rtb_bar * Rtb')'
+    M = R_bar*F.R' - Q'*Q_bar
+    M = triu(M) + transpose(triu(M,1))
+    V_bar .= (Q_bar + Q * M) / F.R'
+    return nothing
+end
 
 """
     w = cell_quadrature(degree, xc, xq, wq, Val(Dim))
@@ -41,28 +95,60 @@ function cell_quadrature(degree, xc, xq, wq, ::Val{Dim}) where {Dim}
     for i = 1:num_basis
         b[i] = dot(Vq[:,i], wq)
     end
-    F = qr(V)
-    Q = Matrix(F.Q)
-    Rt_inv = transpose(inv(F.R))
-    w = Q * Rt_inv * b
+    w = zeros(num_nodes)
+    solve_min_norm!(w, V, b)
     return w
-
-    # complex-step does not play nice with pseudo-inverse
-    # w = pinv(transpose(V))*b 
-    #lambda = -(transpose(V)*V)\b 
-    #w = -V*lambda
-    # A = [diagm(ones(num_nodes)) V; transpose(V) zeros(num_basis, num_basis)]
-    # c = [zeros(num_nodes); b]
-    # y = A\c 
-    # w = y[1:num_nodes]
-    # return w
 end
+
+function cell_quadrature(degree, xc::AbstractArray{ComplexF64,2}, xq, wq,
+                         ::Val{Dim}) where {Dim}
+    @assert( size(xc,1) == size(xq,1) == Dim, "xc/xq/Dim are inconsistent")
+    @assert( size(xq,2) == size(wq,1), "xq and wq have inconsistent sizes")
+    num_basis = binomial(Dim + degree, Dim)
+    num_nodes = size(xc, 2)
+    num_quad = size(xq, 2)
+    @assert( num_nodes >= num_basis, "fewer nodes than basis functions")
+    # apply an affine transformation to the points xc and xq
+    lower = minimum([real.(xc) real.(xq)], dims=2)
+    upper = maximum([real.(xc) real.(xq)], dims=2)
+    dx = upper - lower 
+    xavg = 0.5*(upper + lower)
+    xavg .*= 0.0
+    dx[:] .*= 1.001
+    xc_trans = zero(xc)
+    for I in CartesianIndices(xc)
+        xc_trans[I] = (xc[I] - xavg[I[1]])/dx[I[1]] - 0.5
+    end
+    xq_trans = zero(xq)
+    for I in CartesianIndices(xq)
+        xq_trans[I] = (xq[I] - xavg[I[1]])/dx[I[1]] - 0.5
+    end
+    # evaluate the polynomial basis at the quadrature and node points 
+    workc = zeros(eltype(xc), (Dim+1)*num_nodes)
+    V = zeros(eltype(xc), num_nodes, num_basis)
+    poly_basis!(V, degree, xc_trans, workc, Val(Dim))
+    workq = zeros((Dim+1)*num_quad)
+    Vq = zeros(num_quad, num_basis)
+    poly_basis!(Vq, degree, xq_trans, workq, Val(Dim))
+    # integrate the polynomial basis using the given quadrature
+    b = zeros(num_basis)
+    for i = 1:num_basis
+        b[i] = dot(Vq[:,i], wq)
+    end
+    w = zeros(num_nodes)
+    dw = zeros(num_nodes)
+    dV = imag.(V)
+    solve_min_norm_diff!(w, dw, real.(V), dV, b)    
+    return complex.(w, dw)
+end
+
 
 """
     cell_quadrature_rev!(xc_bar, degree, xc, xq, wq, w_bar, Val(Dim))
 
 Reverse mode differentiated `cell_quadrature`.  Returns the derivatives of 
-`dot(w, w_bar)` with respect to `xc` in the array `xc_bar`.  All other inputs are the same as `cell_quadrature`.
+`dot(w, w_bar)` with respect to `xc` in the array `xc_bar`.  All other inputs
+are the same as `cell_quadrature`.
 """
 function cell_quadrature_rev!(xc_bar, degree, xc, xq, wq, w_bar, ::Val{Dim}
                               ) where {Dim}
@@ -72,9 +158,6 @@ function cell_quadrature_rev!(xc_bar, degree, xc, xq, wq, w_bar, ::Val{Dim}
     num_nodes = size(xc, 2)
     num_quad = size(xq, 2)
     @assert( num_nodes >= num_basis, "fewer nodes than basis functions")
-
-    # forward sweep
-
     # apply an affine transformation to the points xc and xq
     lower = minimum([real.(xc) real.(xq)], dims=2)
     upper = maximum([real.(xc) real.(xq)], dims=2)
@@ -104,39 +187,13 @@ function cell_quadrature_rev!(xc_bar, degree, xc, xq, wq, w_bar, ::Val{Dim}
     for i = 1:num_basis
         b[i] = dot(Vq[:,i], wq)
     end
-
-    # w = pinv(transpose(V))*b
-    # psi = -pinv(transpose(V))'*w_bar 
-    # for d = 1:Dim
-    #     xc_bar[d,:] += w.*dV[:,:,d]*psi
-    # end
-
-    F = qr(V)
-    Q = Matrix(F.Q)
-    Rt_inv = inv(F.R)'
-    w = Q * Rt_inv * b
-
-    # reverse sweep 
-    Q_bar = w_bar * b' * Rt_inv'
-    R_bar = - Rt_inv' * (b * w_bar' * Q) * Rt_inv'
-    L = tril(F.R * R_bar' - R_bar * F.R' + Q'*Q_bar - Q_bar'*Q, -1)
-    V_bar = Q * (R_bar + L * Rt_inv) + (Q_bar - Q*Q'*Q_bar) * Rt_inv 
+    # compute the derivative of the objective w.r.t. V
+    V_bar = zero(V)
+    solve_min_norm_rev!(V_bar, w_bar, V, b)
+    # compute the derivative of the objective w.r.t. xc 
     for d = 1:Dim
-        xc_bar[d,:] += sum(V_bar[:,:].*dV[:,:,d],dims=2)
+        xc_bar[d,:] += sum(V_bar[:,:].*dV[:,:,d],dims=2)/dx[d]
     end
-
-    #lambda = -(transpose(V)*V)\b 
-    #w = -V*lambda
-    #w = pinv(transpose(V))*b 
-
-    # reverse sweep 
-    #adj = -transpose(pinv(transpose(V)))*w_bar
-    #adj1 = -(transpose(V)*V) \ (transpose(V)*w_bar) # size = num_basis
-    #adj2 = -w_bar - V*adj1  # size = num_nodes 
-    #for d = 1:Dim 
-    #    #xc_bar[d,:] += w .* (dV[:,:,d]*adj)/dx[d]
-    #    xc_bar[d,:] += (adj2 .* (dV[:,:,d]*lambda) + w .* (dV[:,:,d]*adj1))/dx[d]
-    #end
     return nothing
 end
 
