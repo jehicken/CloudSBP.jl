@@ -408,6 +408,15 @@ function obj_norm_grad!(g::AbstractVector{T}, root::Cell{Data, Dim, T, L},
     return nothing
 end 
 
+"""
+    obj = penalty(root, xc, xc_init, dist_ref, mu, degree)
+
+Compute the objective that seeks to minimize the change in the node locations
+while ensuring positive quadrature weights.  `root` is the mesh, `xc` are the 
+nodes being varied, `xc_init` are the initial node locations, `dist_ref` are
+reference lengths, `mu` is the penalty parameter for negative quad weights,
+and `degree` is the target exactness of the rule.
+"""
 function penalty(root::Cell{Data, Dim, T, L}, xc, xc_init, dist_ref, mu, degree
                  )  where {Data, Dim, T, L}
     num_nodes = size(xc, 2)
