@@ -434,10 +434,12 @@ function penalty(root::Cell{Data, Dim, T, L}, xc, xc_init, dist_ref, mu, degree
     H = diagonal_norm(root, xc, degree)
 
     # add the penalties 
+    tol = 1e-5
     for i = 1:num_nodes 
-        H_ref = dist_ref[i]^Dim
-        if real(H[i]) < H_ref
-            phi += mu*(H[i]/H_ref - 1)^2
+        # H_ref = dist_ref[i]^Dim
+        H_ref = 1.0
+        if real(H[i]) < tol
+            phi += mu*(H[i]/H_ref - tol)^2
         end 
     end
 
@@ -457,13 +459,15 @@ function penalty_grad!(g::AbstractVector{T}, root::Cell{Data, Dim, T, L},
     # return phi
     # phi *= 0.5 
     phi_bar = 0.5 
-    # add the penalties 
+    # add the penalties
+    tol = 1e-5
     H_bar = zero(H)
     for i = 1:num_nodes 
-        H_ref = dist_ref[i]^Dim
-        if real(H[i]) < H_ref
+        # H_ref = dist_ref[i]^Dim
+        H_ref = 1.0
+        if real(H[i]) < tol #H_ref
             # phi += mu*(H[i]/H_ref - 1)^2
-            H_bar[i] += phi_bar*2.0*mu*(H[i]/H_ref - 1)/H_ref
+            H_bar[i] += phi_bar*2.0*mu*(H[i]/H_ref - tol)/H_ref
         end 
     end
 

@@ -14,7 +14,7 @@ using SparseArrays
 #Random.seed!(42)
 
 Dim = 2
-degree = 3
+degree = 5
 
 # use a unit HyperRectangle 
 root = Cell(SVector(ntuple(i -> 0.0, Dim)),
@@ -24,7 +24,7 @@ root = Cell(SVector(ntuple(i -> 0.0, Dim)),
 # DGD dof locations
 num_basis = binomial(Dim + degree, Dim)
 
-num_nodes = 100*num_basis
+num_nodes = 10*num_basis
 points = rand(Dim, num_nodes)
 
 # refine mesh, build sentencil, and evaluate particular quad and nullspace
@@ -46,7 +46,7 @@ CutDGD.build_nn_stencils!(root, points, degree)
 #end
 #println(dist_ref)
 dist_ref = ones(num_nodes)
-mu = 10.0
+mu = 100.0
 
 g = zeros(num_nodes*Dim)
 
