@@ -427,11 +427,20 @@ function penalty(root::Cell{Data, Dim, T, L}, xc, xc_init, dist_ref, mu, degree
         for d = 1:Dim 
             dist += (xc[d,i] - xc_init[d,i])^2
         end 
-        phi += dist/(dist_ref[i]^2)
+        phi += 0.5*mu*dist/(dist_ref[i]^2)
     end
 
     # compute the diagonal norm based on x 
     H = diagonal_norm(root, xc, degree)
+
+    # # compute the discrete KS function
+    # rho = 100.0
+    # minH = minimum(real.(H))     
+    # sum_exp = 0.0
+    # for i = 1:num_nodes 
+    #     sum_exp += exp(rho*(minH - H[i]))
+    # end 
+    # phi += -minH + log(sum_exp/num_nodes)/rho
 
     # add the penalties 
     tol = 1e-5
@@ -443,7 +452,6 @@ function penalty(root::Cell{Data, Dim, T, L}, xc, xc_init, dist_ref, mu, degree
         end 
     end
 
-    phi *= 0.5
     return phi
 end
 
@@ -454,11 +462,31 @@ function penalty_grad!(g::AbstractVector{T}, root::Cell{Data, Dim, T, L},
     # need the diagonal norm for the reverse sweep 
     H = diagonal_norm(root, xc, degree)
 
+    # rho = 100.0
+    # minH = minimum(real.(H))
+    # sum_exp = 0.0
+    # for i = 1:num_nodes 
+    #     sum_exp += exp(rho*(minH - H[i]))
+    # end 
+
     # start the reverse sweep 
     fill!(g, zero(T))
+
     # return phi
     # phi *= 0.5 
-    phi_bar = 0.5 
+    # phi_bar = 0.5 
+
+    # return phi 
+    phi_bar = 1.0 
+
+    # # phi += -minH + log(sum_exp/num_nodes)/rho
+    # sum_exp_bar = phi_bar/(sum_exp * rho)
+    # H_bar = zero(H)
+    # for i = 1:num_nodes 
+    #     # sum_exp += exp(rho*(minH - H[i]))
+    #     H_bar[i] -= sum_exp_bar*exp(rho*(minH - H[i]))*rho
+    # end
+
     # add the penalties
     tol = 1e-5
     H_bar = zero(H)
@@ -478,8 +506,8 @@ function penalty_grad!(g::AbstractVector{T}, root::Cell{Data, Dim, T, L},
 
     # compute the norm part of the penalty
     for i = 1:num_nodes 
-        # phi += dist/(dist_ref[i]^2)
-        dist_bar = phi_bar/(dist_ref[i]^2)
+        # phi += 0.5*mu*dist/(dist_ref[i]^2)
+        dist_bar = 0.5*mu*phi_bar/(dist_ref[i]^2)
         for d = 1:Dim 
             # dist += (xc[d,i] - xc_init[d,i])^2
             xc_bar[d,i] += dist_bar*2.0*(xc[d,i] - xc_init[d,i])
