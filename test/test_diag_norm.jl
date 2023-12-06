@@ -232,7 +232,7 @@ end
     # compute the penalty gradient 
     mu = 1.0
     g = zeros(Dim*num_nodes)
-    dist_ref = ones(num_nodes)    
+    dist_ref = 1.0 .+ 0.1*rand(num_nodes)
     CutDGD.penalty_grad!(g, root, points, points_init, dist_ref, mu, degree)
 
     # compare against a complex-step based directional derivative 
