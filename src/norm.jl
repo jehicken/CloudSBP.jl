@@ -443,12 +443,12 @@ function penalty(root::Cell{Data, Dim, T, L}, xc, xc_init, dist_ref, mu, degree
     # phi += -minH + log(sum_exp/num_nodes)/rho
 
     # add the penalties 
-    tol = 1e-5
+    tol = 1e-3
     for i = 1:num_nodes 
         # H_ref = dist_ref[i]^Dim
         H_ref = 1.0
         if real(H[i]) < tol
-            phi += 0.5*(H[i]/H_ref - tol)^2
+            phi += 0.5*(H[i]/tol - 1)^2
         end 
     end
 
@@ -488,14 +488,14 @@ function penalty_grad!(g::AbstractVector{T}, root::Cell{Data, Dim, T, L},
     # end
 
     # add the penalties
-    tol = 1e-5
+    tol = 1e-3
     H_bar = zero(H)
     for i = 1:num_nodes 
         # H_ref = dist_ref[i]^Dim
         H_ref = 1.0
         if real(H[i]) < tol #H_ref
-            # phi += 0.5*(H[i]/H_ref - tol)^2
-            H_bar[i] += phi_bar*(H[i]/H_ref - tol)/H_ref
+            # phi += 0.5*(H[i]/tol - 1)^2
+            H_bar[i] += phi_bar*(H[i]/tol - 1)/tol
         end 
     end
 
@@ -547,7 +547,7 @@ function penalty_block_hess!(p::AbstractVector{T}, g::AbstractVector{T},
     # now form the (approximate) Dim x Dim diagonal block of the Hessian, and
     # invert it on the given vector.
     hess = zeros(Dim, Dim)
-    tol = 1e-5
+    tol = 1e-3
     for i = 1:num_nodes 
         #dist = 0.0
         #for d = 1:Dim 
@@ -559,8 +559,8 @@ function penalty_block_hess!(p::AbstractVector{T}, g::AbstractVector{T},
         # H_ref = dist_ref[i]^Dim
         H_ref = 1.0
         if real(H[i]) < tol #H_ref
-            # phi += 0.5*(H[i]/H_ref - tol)^2
-            hess[:,:] += dHdx[:,i]*(dHdx[:,i]'/H_ref^2)
+            # phi += 0.5*(H[i]/tol - 1)^2
+            hess[:,:] += dHdx[:,i]*(dHdx[:,i]'/tol^2)
         end
 
         dxc[:,i] = hess\gc[:,i]

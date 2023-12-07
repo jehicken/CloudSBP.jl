@@ -14,7 +14,7 @@ using SparseArrays
 #Random.seed!(42)
 
 Dim = 2
-degree = 3
+degree = 7
 
 # use a unit HyperRectangle 
 root = Cell(SVector(ntuple(i -> 0.0, Dim)),
@@ -24,7 +24,7 @@ root = Cell(SVector(ntuple(i -> 0.0, Dim)),
 # DGD dof locations
 num_basis = binomial(Dim + degree, Dim)
 
-num_nodes = 100*num_basis
+num_nodes = 50*num_basis
 points = rand(Dim, num_nodes)
 
 # refine mesh, build sentencil, and evaluate particular quad and nullspace
@@ -46,7 +46,7 @@ CutDGD.build_nn_stencils!(root, points, degree)
 #end
 #println(dist_ref)
 dist_ref = ones(num_nodes)
-mu = 0.0000001
+mu = 0.0
 
 g = zeros(num_nodes*Dim)
 g_pert = zero(g)
@@ -59,13 +59,16 @@ p = zero(g)
 alpha = 1.0
 max_iter = 1000
 max_line = 10
+
+for d = 1:degree
+    println("Starting optimization with degree = ",d)
 for n = 1:max_iter
     global points
     #obj = CutDGD.obj_norm(root, wp, Z, y, rho, num_nodes)
     #CutDGD.obj_norm_grad!(g, root, wp, Z, y, rho, num_nodes)
-    obj = CutDGD.penalty(root, points, points_init, dist_ref, mu, degree)
+    obj = CutDGD.penalty(root, points, points_init, dist_ref, mu, d)
     # y[:] = g[:]
-    CutDGD.penalty_grad!(g, root, points, points_init, dist_ref, mu, degree)
+    CutDGD.penalty_grad!(g, root, points, points_init, dist_ref, mu, d)
     println("iter ",n,": obj = ",obj,": norm(grad) = ",norm(g))
 
     # if n > 1
@@ -78,7 +81,7 @@ for n = 1:max_iter
     #     Hess_inv ./= norm(g)
     # end
 
-    H = CutDGD.diagonal_norm(root, points, degree)
+    H = CutDGD.diagonal_norm(root, points, d)
     # compute the discrete KS function's denom 
     minH = minimum(H)
     println("min H = ",minH)
@@ -90,7 +93,7 @@ for n = 1:max_iter
     dxc = reshape(p, (Dim, num_nodes))
     eps_fd = 1e-6
     points += eps_fd*dxc
-    CutDGD.penalty_grad!(g_pert, root, points, points_init, dist_ref, mu, degree)
+    CutDGD.penalty_grad!(g_pert, root, points, points_init, dist_ref, mu, d)
     pHp = dot(p, (g_pert - g)/eps_fd)
     if pHp > 1e-3
         alpha = -dot(g, p)/(pHp) # negative accounted for below 
@@ -108,7 +111,7 @@ for n = 1:max_iter
     #alpha = 1.0
     for k = 1:max_line
         points += alpha*dxc
-        obj = CutDGD.penalty(root, points, points_init, dist_ref, mu, degree)
+        obj = CutDGD.penalty(root, points, points_init, dist_ref, mu, d)
         println("\tline-search iter ",k,": alpha = ",alpha,": obj0 = ",obj0,": obj = ",obj)
         if obj < obj0
             break
@@ -118,6 +121,7 @@ for n = 1:max_iter
     end
     
 end
+end # degree loop
 
 using PyPlot
 
@@ -128,5 +132,12 @@ dx = points - points_init
 PyPlot.quiver(vec(points_init[1,:]), vec(points_init[2,:]), vec(dx[1,:]), vec(dx[2,:]), angles="xy", scale_units="xy", scale=1, lw=1)
 PyPlot.axis("equal")
 #PyPlot.axis([0, 1, 0, 1])
+
+PyPlot.figure()
+PyPlot.plot(vec(points_init[1,:]), vec(points_init[2,:]), "ro")
+PyPlot.axis("equal")
+PyPlot.figure()
+PyPlot.plot(vec(points[1,:]), vec(points[2,:]), "ko")
+PyPlot.axis("equal")
 
 end # module 
