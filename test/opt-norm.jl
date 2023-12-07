@@ -14,7 +14,7 @@ using SparseArrays
 #Random.seed!(42)
 
 Dim = 2
-degree = 2
+degree = 3
 
 # use a unit HyperRectangle 
 root = Cell(SVector(ntuple(i -> 0.0, Dim)),
@@ -46,20 +46,37 @@ CutDGD.build_nn_stencils!(root, points, degree)
 #end
 #println(dist_ref)
 dist_ref = ones(num_nodes)
-mu = 0.0001
+mu = 0.0000001
 
 g = zeros(num_nodes*Dim)
+g_pert = zero(g)
+#y = zero(g)
+p = zero(g) 
+
+# try BFGS before implementing its limited memory version 
+# Hess_inv = diagm(ones(num_nodes*Dim))
 
 alpha = 1.0
 max_iter = 1000
 max_line = 10
 for n = 1:max_iter
-
+    global points
     #obj = CutDGD.obj_norm(root, wp, Z, y, rho, num_nodes)
     #CutDGD.obj_norm_grad!(g, root, wp, Z, y, rho, num_nodes)
     obj = CutDGD.penalty(root, points, points_init, dist_ref, mu, degree)
+    # y[:] = g[:]
     CutDGD.penalty_grad!(g, root, points, points_init, dist_ref, mu, degree)
     println("iter ",n,": obj = ",obj,": norm(grad) = ",norm(g))
+
+    # if n > 1
+    #     y[:] -= g[:]
+    #     y[:] .*= -1.0
+    #     rho = 1/dot(y, p)
+    #     Hess_inv += (I + rho * p *y')*Hess_inv*(I + rho * y * p')
+    #     Hess_inv += rho * p * p'
+    # else
+    #     Hess_inv ./= norm(g)
+    # end
 
     H = CutDGD.diagonal_norm(root, points, degree)
     # compute the discrete KS function's denom 
@@ -68,18 +85,35 @@ for n = 1:max_iter
     if minH > 0.0 
         break
     end
-    
+        
+    p[:] = -g[:]/norm(g)
+    dxc = reshape(p, (Dim, num_nodes))
+    eps_fd = 1e-6
+    points += eps_fd*dxc
+    CutDGD.penalty_grad!(g_pert, root, points, points_init, dist_ref, mu, degree)
+    pHp = dot(p, (g_pert - g)/eps_fd)
+    if pHp > 1e-3
+        alpha = -dot(g, p)/(pHp) # negative accounted for below 
+    else
+        alpha = 1.0
+    end
+    points -= eps_fd*dxc
+
+    #CutDGD.penalty_block_hess!(p, g, root, points, dist_ref, mu, degree)    
+    #global Hess_inv
+    #global p = Hess_inv*g
+
     obj0 = obj
-    dxc = reshape(g, (Dim, num_nodes))
-    alpha = 10.0
+    #dxc = reshape(p, (Dim, num_nodes))
+    #alpha = 1.0
     for k = 1:max_line
-        global points -= alpha*dxc
+        points += alpha*dxc
         obj = CutDGD.penalty(root, points, points_init, dist_ref, mu, degree)
-        println("\tline-search iter ",k,": obj0 = ",obj0,": obj = ",obj)
+        println("\tline-search iter ",k,": alpha = ",alpha,": obj0 = ",obj0,": obj = ",obj)
         if obj < obj0
             break
         end
-        points += alpha*dxc
+        points -= alpha*dxc
         alpha *= 0.1        
     end
     

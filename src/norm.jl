@@ -448,7 +448,7 @@ function penalty(root::Cell{Data, Dim, T, L}, xc, xc_init, dist_ref, mu, degree
         # H_ref = dist_ref[i]^Dim
         H_ref = 1.0
         if real(H[i]) < tol
-            phi += mu*(H[i]/H_ref - tol)^2
+            phi += 0.5*(H[i]/H_ref - tol)^2
         end 
     end
 
@@ -494,8 +494,8 @@ function penalty_grad!(g::AbstractVector{T}, root::Cell{Data, Dim, T, L},
         # H_ref = dist_ref[i]^Dim
         H_ref = 1.0
         if real(H[i]) < tol #H_ref
-            # phi += mu*(H[i]/H_ref - 1)^2
-            H_bar[i] += phi_bar*2.0*mu*(H[i]/H_ref - tol)/H_ref
+            # phi += 0.5*(H[i]/H_ref - tol)^2
+            H_bar[i] += phi_bar*(H[i]/H_ref - tol)/H_ref
         end 
     end
 
@@ -515,3 +515,59 @@ function penalty_grad!(g::AbstractVector{T}, root::Cell{Data, Dim, T, L},
     end
     return nothing
 end 
+
+function penalty_block_hess!(p::AbstractVector{T}, g::AbstractVector{T},
+                             root::Cell{Data, Dim, T, L}, xc, dist_ref,
+                             mu, degree)  where {Data, Dim, T, L}
+    num_nodes = size(xc, 2)
+    dxc = reshape(p, Dim, num_nodes)
+    gc = reshape(g, Dim, num_nodes)
+    # need the diagonal norm
+    H = diagonal_norm(root, xc, degree)
+
+    dHdx = zeros(2, num_nodes) 
+    x1d, w1d = lg_nodes(degree+1) # could also use lgl_nodes                   
+    wq = zeros(length(w1d)^Dim)
+    xq = zeros(Dim, length(wq))
+    for cell in allleaves(root)
+        # get the nodes in this cell's stencil, and an accurate quaduature
+        #nodes = copy(points[:, cell.data.points])
+        nodes = view(xc, :, cell.data.points)
+        quadrature!(xq, wq, cell.boundary, x1d, w1d)
+        w_bar = zeros(length(cell.data.points))
+        dwdx = zeros(Dim, length(cell.data.points))
+        for i = 1:length(cell.data.points)            
+            fill!(dwdx, 0.0)
+            w_bar[i] = 1.0 
+            cell_quadrature_rev!(dwdx, degree, nodes, xq, wq, w_bar, Val(Dim))
+            dHdx[:,cell.data.points[i]] += dwdx[:,i]
+            w_bar[i] = 0.0
+        end
+    end
+    # now form the (approximate) Dim x Dim diagonal block of the Hessian, and
+    # invert it on the given vector.
+    hess = zeros(Dim, Dim)
+    tol = 1e-5
+    for i = 1:num_nodes 
+        #dist = 0.0
+        #for d = 1:Dim 
+        #    dist += (xc[d,i] - xc_init[d,i])^2
+        #end 
+        #phi += 0.5*mu*dist/(dist_ref[i]^2)
+        hess[:,:] = (mu/dist_ref[i]^2)*diagm(ones(Dim))
+
+        # H_ref = dist_ref[i]^Dim
+        H_ref = 1.0
+        if real(H[i]) < tol #H_ref
+            # phi += 0.5*(H[i]/H_ref - tol)^2
+            hess[:,:] += dHdx[:,i]*(dHdx[:,i]'/H_ref^2)
+        end
+
+        dxc[:,i] = hess\gc[:,i]
+        if dot(dxc[:,i], gc[:,i]) < 0.0
+            # dxc is not (locally) a descent direction, so revert 
+            dxc[:,i] = (dist_ref[i]^2/mu)*gc[:,i]
+        end
+    end
+    return nothing
+end
