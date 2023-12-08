@@ -571,3 +571,34 @@ function penalty_block_hess!(p::AbstractVector{T}, g::AbstractVector{T},
     end
     return nothing
 end
+
+function apply_approx_inverse!(p::AbstractVector{T}, g::AbstractVector{T},
+                               root::Cell{Data, Dim, T, L}, xc, dist_ref,
+                               mu, degree)  where {Data, Dim, T, L}
+
+    # need the diagonal norm for various steps
+    H = diagonal_norm(root, xc, degree)
+
+    # determine the set of norms that are smallest
+    indices = sortperm(H)
+    small_H = indices[1:20]
+
+    # construct the Jacobian for the smallest norms 
+
+    for cell in allleaves(root)
+        # get the nodes in this cell's stencil, and an accurate quaduature
+        nodes = view(points, :, cell.data.points)
+        quadrature!(xq, wq, cell.boundary, x1d, w1d)
+        w_bar = zeros(length(cell.data.points))
+        for i = 1:length(cell.data.points)
+            # H[cell.data.points[i]] += w[i]
+            w_bar[i] = H_bar[cell.data.points[i]]
+        end
+        nodes_bar = view(points_bar, :, cell.data.points)
+        # w = cell_quadrature(degree, nodes, xq, wq, Val(Dim))
+        cell_quadrature_rev!(nodes_bar, degree, nodes, xq, wq, w_bar, Val(Dim))
+        #nodes_bar[Dim,:] += w_bar[:].*nodes[1,:]
+        #nodes_bar[1,:] += w_bar[:].*nodes[Dim,:]
+    end
+
+end
