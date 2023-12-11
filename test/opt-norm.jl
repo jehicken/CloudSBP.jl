@@ -59,16 +59,21 @@ p = zero(g)
 alpha = 1.0
 max_iter = 1000
 max_line = 10
+max_rank = 20
 
 for d = 1:degree
     println("Starting optimization with degree = ",d)
+
+    H_tol = ones(num_nodes)
+    H_tol .*= 1e-5
+
 for n = 1:max_iter
     global points
     #obj = CutDGD.obj_norm(root, wp, Z, y, rho, num_nodes)
     #CutDGD.obj_norm_grad!(g, root, wp, Z, y, rho, num_nodes)
-    obj = CutDGD.penalty(root, points, points_init, dist_ref, mu, d)
+    obj = CutDGD.penalty(root, points, points_init, dist_ref, H_tol, mu, d)
     # y[:] = g[:]
-    CutDGD.penalty_grad!(g, root, points, points_init, dist_ref, mu, d)
+    CutDGD.penalty_grad!(g, root, points, points_init, dist_ref, H_tol, mu, d)
     println("iter ",n,": obj = ",obj,": norm(grad) = ",norm(g))
 
     # if n > 1
@@ -89,18 +94,26 @@ for n = 1:max_iter
         break
     end
         
-    p[:] = -g[:]/norm(g)
-    dxc = reshape(p, (Dim, num_nodes))
-    eps_fd = 1e-6
-    points += eps_fd*dxc
-    CutDGD.penalty_grad!(g_pert, root, points, points_init, dist_ref, mu, d)
-    pHp = dot(p, (g_pert - g)/eps_fd)
-    if pHp > 1e-3
-        alpha = -dot(g, p)/(pHp) # negative accounted for below 
-    else
-        alpha = 1.0
+    if false
+        # This "1D Newtons' method" works, but it is slow to converge
+        p[:] = -g[:]/norm(g)
+        dxc = reshape(p, (Dim, num_nodes))
+        eps_fd = 1e-6
+        points += eps_fd*dxc
+        CutDGD.penalty_grad!(g_pert, root, points, points_init, dist_ref, mu, d)
+        pHp = dot(p, (g_pert - g)/eps_fd)
+        if pHp > 1e-3
+            alpha = -dot(g, p)/(pHp) # negative accounted for below 
+        else
+            alpha = 1.0
+        end
+        points -= eps_fd*dxc
     end
-    points -= eps_fd*dxc
+
+    CutDGD.apply_approx_inverse!(p, g, root, points, dist_ref, H_tol, mu, d, 
+                                 max_rank)
+    alpha = 1.0 
+    dxc = reshape(p, (Dim, num_nodes))
 
     #CutDGD.penalty_block_hess!(p, g, root, points, dist_ref, mu, degree)    
     #global Hess_inv
@@ -111,7 +124,7 @@ for n = 1:max_iter
     #alpha = 1.0
     for k = 1:max_line
         points += alpha*dxc
-        obj = CutDGD.penalty(root, points, points_init, dist_ref, mu, d)
+        obj = CutDGD.penalty(root, points, points_init, dist_ref, H_tol, mu, d)
         println("\tline-search iter ",k,": alpha = ",alpha,": obj0 = ",obj0,": obj = ",obj)
         if obj < obj0
             break

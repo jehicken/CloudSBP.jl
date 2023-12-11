@@ -409,16 +409,18 @@ function obj_norm_grad!(g::AbstractVector{T}, root::Cell{Data, Dim, T, L},
 end 
 
 """
-    obj = penalty(root, xc, xc_init, dist_ref, mu, degree)
+    obj = penalty(root, xc, xc_init, dist_ref, H_tol, mu, degree)
 
 Compute the objective that seeks to minimize the change in the node locations
 while ensuring positive quadrature weights.  `root` is the mesh, `xc` are the 
-nodes being varied, `xc_init` are the initial node locations, `dist_ref` are
-reference lengths, `mu` is the penalty parameter for negative quad weights,
-and `degree` is the target exactness of the rule.
+nodes being varied, and `xc_init` are the initial node locations. `dist_ref` are
+reference lengths, and `H_tol` is an array of tolerances for the quadrature 
+weight at each node; that is, `H[i] >= H_tol[i]` for the constraint to be 
+satisfied.  Finally, `mu` scales the regularization term, and `degree` is the 
+target exactness of the rule.
 """
-function penalty(root::Cell{Data, Dim, T, L}, xc, xc_init, dist_ref, mu, degree
-                 )  where {Data, Dim, T, L}
+function penalty(root::Cell{Data, Dim, T, L}, xc, xc_init, dist_ref, H_tol, 
+                 mu, degree)  where {Data, Dim, T, L}
     num_nodes = size(xc, 2)
     # compute the norm part of the penalty
     phi = 0.0
@@ -442,13 +444,10 @@ function penalty(root::Cell{Data, Dim, T, L}, xc, xc_init, dist_ref, mu, degree
     # end 
     # phi += -minH + log(sum_exp/num_nodes)/rho
 
-    # add the penalties 
-    tol = 1e-3
-    for i = 1:num_nodes 
-        # H_ref = dist_ref[i]^Dim
-        H_ref = 1.0
-        if real(H[i]) < tol
-            phi += 0.5*(H[i]/tol - 1)^2
+    # add the penalties
+    for i = 1:num_nodes
+        if real(H[i]) < H_tol[i]
+            phi += 0.5*(H[i]/H_tol[i] - 1)^2
         end 
     end
 
@@ -456,7 +455,7 @@ function penalty(root::Cell{Data, Dim, T, L}, xc, xc_init, dist_ref, mu, degree
 end
 
 function penalty_grad!(g::AbstractVector{T}, root::Cell{Data, Dim, T, L}, 
-                       xc, xc_init, dist_ref, mu, degree
+                       xc, xc_init, dist_ref, H_tol, mu, degree
                        )  where {Data, Dim, T, L}
     num_nodes = size(xc, 2)
     # need the diagonal norm for the reverse sweep 
@@ -487,15 +486,12 @@ function penalty_grad!(g::AbstractVector{T}, root::Cell{Data, Dim, T, L},
     #     H_bar[i] -= sum_exp_bar*exp(rho*(minH - H[i]))*rho
     # end
 
-    # add the penalties
-    tol = 1e-3
+    # add the penalties    
     H_bar = zero(H)
-    for i = 1:num_nodes 
-        # H_ref = dist_ref[i]^Dim
-        H_ref = 1.0
-        if real(H[i]) < tol #H_ref
-            # phi += 0.5*(H[i]/tol - 1)^2
-            H_bar[i] += phi_bar*(H[i]/tol - 1)/tol
+    for i = 1:num_nodes         
+        if real(H[i]) < H_tol[i] 
+            # phi += 0.5*(H[i]/H_tol[i] - 1)^2
+            H_bar[i] += phi_bar*(H[i]/H_tol[i] - 1)/H_tol[i]
         end 
     end
 
@@ -547,7 +543,7 @@ function penalty_block_hess!(p::AbstractVector{T}, g::AbstractVector{T},
     # now form the (approximate) Dim x Dim diagonal block of the Hessian, and
     # invert it on the given vector.
     hess = zeros(Dim, Dim)
-    tol = 1e-3
+    tol = 1e-5
     for i = 1:num_nodes 
         #dist = 0.0
         #for d = 1:Dim 
@@ -573,32 +569,74 @@ function penalty_block_hess!(p::AbstractVector{T}, g::AbstractVector{T},
 end
 
 function apply_approx_inverse!(p::AbstractVector{T}, g::AbstractVector{T},
-                               root::Cell{Data, Dim, T, L}, xc, dist_ref,
-                               mu, degree)  where {Data, Dim, T, L}
-
+                               root::Cell{Data, Dim, T, L}, xc, dist_ref, H_tol,
+                               mu, degree, max_rank)  where {Data, Dim, T, L}
+    num_nodes = size(xc, 2)
     # need the diagonal norm for various steps
     H = diagonal_norm(root, xc, degree)
 
     # determine the set of norms that are smallest
-    indices = sortperm(H)
-    small_H = indices[1:20]
+    tol = 1e-5
+    small_H = Vector{Int}()
+    diag_scal = Vector{T}()
+    for i = 1:num_nodes
+        if real(H[i]) < H_tol[i]
+            push!(small_H, i)
+            #push!(diag_scal, 1/H_tol[i])
+            push!(diag_scal, real(H[i]))
+        end
+    end
+    println("Number of violating weights = ",size(small_H), "/", num_nodes)
+    #println("small_H = ",H[small_H])
+    if length(small_H) > max_rank
+        # truncate at maximum allowable rank
+        sort_idx = sortperm(diag_scal)
+        small_H = small_H[sort_idx[1:max_rank]]
+    end 
+    # done with diag_scal's temporary use, so store actual scales
+    diag_scal = 1.0./H_tol[small_H]
+
+    #println("After trucation...")
+    #println("small_H = ",H[small_H])
 
     # construct the Jacobian for the smallest norms 
-
+    H_Jac = zeros(Dim, num_nodes, length(small_H))
+    x1d, w1d = lg_nodes(degree+1) # could also use lgl_nodes                   
+    wq = zeros(length(w1d)^Dim)
+    xq = zeros(Dim, length(wq))
     for cell in allleaves(root)
-        # get the nodes in this cell's stencil, and an accurate quaduature
-        nodes = view(points, :, cell.data.points)
-        quadrature!(xq, wq, cell.boundary, x1d, w1d)
-        w_bar = zeros(length(cell.data.points))
-        for i = 1:length(cell.data.points)
-            # H[cell.data.points[i]] += w[i]
-            w_bar[i] = H_bar[cell.data.points[i]]
+        # first, check if any of the nodes in this cell's stencil are among the 
+        # small_H indices 
+        cell_set = intersect(small_H, cell.data.points)
+        if length(cell_set) == 0
+            continue
         end
-        nodes_bar = view(points_bar, :, cell.data.points)
-        # w = cell_quadrature(degree, nodes, xq, wq, Val(Dim))
-        cell_quadrature_rev!(nodes_bar, degree, nodes, xq, wq, w_bar, Val(Dim))
-        #nodes_bar[Dim,:] += w_bar[:].*nodes[1,:]
-        #nodes_bar[1,:] += w_bar[:].*nodes[Dim,:]
+        #println("cell.data.points = ",cell.data.points)
+        #println("cell_set = ",cell_set)
+        # get the nodes in this cell's stencil, and an accurate quaduature
+        nodes = view(xc, :, cell.data.points)
+        quadrature!(xq, wq, cell.boundary, x1d, w1d)
+        # loop over the nodes in cell_set 
+        w_bar = zeros(length(cell.data.points))
+        for i = 1:length(cell_set)
+            idx = findfirst(j -> j == cell_set[i], cell.data.points)
+            w_bar[idx] = 1.0
+            nodes_bar = view(H_Jac, :, cell.data.points, findfirst(j -> j == cell_set[i], small_H)) #, Dim, length(cell.data.points))
+            cell_quadrature_rev!(nodes_bar, degree, nodes, xq, wq, w_bar,
+                                 Val(Dim))
+            w_bar[idx] = 0.0
+        end
     end
 
+    # Compute the QR factorization of H_Jac; could do this in place to save 
+    # memory
+    A = reshape(H_Jac, Dim*num_nodes, length(small_H))
+    A *= diagm(diag_scal)
+    F = qr(A)
+
+    # find the search direction 
+    Q = Matrix(F.Q)
+    p[:] = -Q *( (F.R*F.R')\(Q'*g) )
+
+    return nothing
 end
