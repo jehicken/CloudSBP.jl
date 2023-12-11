@@ -586,7 +586,7 @@ function apply_approx_inverse!(p::AbstractVector{T}, g::AbstractVector{T},
             push!(diag_scal, real(H[i]))
         end
     end
-    println("Number of violating weights = ",size(small_H), "/", num_nodes)
+    println("Number of violating weights = ",length(small_H), "/", num_nodes)
     #println("small_H = ",H[small_H])
     if length(small_H) > max_rank
         # truncate at maximum allowable rank

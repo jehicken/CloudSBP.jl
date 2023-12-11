@@ -14,7 +14,7 @@ using SparseArrays
 #Random.seed!(42)
 
 Dim = 2
-degree = 7
+degree = 5
 
 # use a unit HyperRectangle 
 root = Cell(SVector(ntuple(i -> 0.0, Dim)),
@@ -90,9 +90,18 @@ for n = 1:max_iter
     # compute the discrete KS function's denom 
     minH = minimum(H)
     println("min H = ",minH)
-    if minH > 0.0 
+    done = true
+    for i = 1:num_nodes 
+        if H[i] < 0.9*H_tol[i]
+            done = false
+        end
+    end
+    if done 
         break
     end
+    #if minH > 0.0 
+    #    break
+    #end
         
     if false
         # This "1D Newtons' method" works, but it is slow to converge
