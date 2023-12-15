@@ -58,6 +58,10 @@ end
 # To avoid recomputing the integrals every time, we can store the momemnts
 # This will save CPU time but might be a problem for memory, eventually.
 
+# Module variable used to store a reference to the levset;
+# this is needed for the @safe_cfunction macro
+# const mod_levset = Ref{Any}() # defined in first_derivative.jl
+
 function calc_moments()
 
     num_cell = num_leaves(root)
@@ -71,6 +75,11 @@ function calc_moments()
     xq = zeros(Dim, num_quad)
     Vq = zeros(num_quad, num_basis)
     workq = zeros((Dim+1)*num_quad)
+
+    # set up the level-set function for passing to calc_cut_quad below
+    mod_levset[] = levset
+    safe_clevset = @safe_cfunction( 
+        x -> evallevelset(x, mod_levset[]), Cdouble, (Vector{Float64},))
 
     for (c, cell) in enumerate(allleaves(root))
         if cell.data.immersed
