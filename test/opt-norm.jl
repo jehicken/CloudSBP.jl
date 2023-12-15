@@ -14,7 +14,7 @@ using SparseArrays
 #Random.seed!(42)
 
 Dim = 2
-degree = 5
+degree = 7
 
 # use a unit HyperRectangle 
 root = Cell(SVector(ntuple(i -> 0.0, Dim)),
@@ -24,8 +24,23 @@ root = Cell(SVector(ntuple(i -> 0.0, Dim)),
 # DGD dof locations
 num_basis = binomial(Dim + degree, Dim)
 
-num_nodes = 50*num_basis
-points = rand(Dim, num_nodes)
+#num_nodes = 50*num_basis
+#points = rand(Dim, num_nodes)
+
+num1d = 40
+num_nodes = num1d^2
+points = zeros(Dim, num_nodes)
+ptr = 1
+dx = 1/(num1d-1)
+for i = 1:num1d
+    x = (i-1)*dx
+    for j = 1:num1d 
+        y = (j-1)*dx
+        points[:,ptr] = [x,y] + 0.2*dx*randn(2)
+        global ptr += 1
+    end
+end
+
 
 # refine mesh, build sentencil, and evaluate particular quad and nullspace
 CutDGD.refine_on_points!(root, points)
@@ -46,7 +61,7 @@ CutDGD.build_nn_stencils!(root, points, degree)
 #end
 #println(dist_ref)
 dist_ref = ones(num_nodes)
-mu = 0.0
+mu = 0.001
 
 g = zeros(num_nodes*Dim)
 g_pert = zero(g)
@@ -59,7 +74,7 @@ p = zero(g)
 alpha = 1.0
 max_iter = 1000
 max_line = 10
-max_rank = 20
+max_rank = 50
 
 for d = 1:degree
     println("Starting optimization with degree = ",d)
