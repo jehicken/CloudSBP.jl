@@ -55,6 +55,54 @@ function solve_min_norm_rev!(V_bar, w_bar, V, b)
     return nothing
 end
 
+# To avoid recomputing the integrals every time, we can store the momemnts
+# This will save CPU time but might be a problem for memory, eventually.
+
+function calc_moments()
+
+    num_cell = num_leaves(root)
+    num_basis = binomial(Dim + degree, Dim)
+    moments = zeros(num_basis, num_cell)
+
+    # get arrays/data used for tensor-product quadrature 
+    x1d, w1d = lg_nodes(degree+1) # could also use lgl_nodes
+    num_quad = length(w1d)^Dim             
+    wq = zeros(num_quad)
+    xq = zeros(Dim, num_quad)
+    Vq = zeros(num_quad, num_basis)
+    workq = zeros((Dim+1)*num_quad)
+
+    for (c, cell) in enumerate(allleaves(root))
+        if cell.data.immersed
+            # do not integrate cells that have been confirmed immersed
+            continue
+        elseif cell.data.cut 
+            # this cell *may* be cut; use Saye's algorithm
+            wq, xq, surf_wts, surf_pts = calc_cut_quad(cell.boundary,
+                                                       safe_clevset,
+                                                       degree+1, 
+                                                       fit_degree=2*degree)
+            # consider resizing 1D arrays, only if need larger, with reshape
+            Vq = zeros(length(wq), num_basis)
+            workq = zeros((Dim+1)*length(wq))
+            poly_basis!(Vq, degree, xq, workq, Val(Dim))
+            for i = 1:num_basis
+                moments[i, c] = dot(Vq[:,i], wq)
+            end
+        else
+            # this cell is not cut; use a tensor-product quadrature to integrate
+            # Wait, these are always the same for uncut cells!!!
+            # Precompute
+            quadrature!(xq, wq, cell.boundary, x1d, w1d)             
+            poly_basis!(Vq, degree, xq, workq, Val(Dim))
+            for i = 1:num_basis
+                moments[i, c] = dot(Vq[:,i], wq)
+            end
+        end
+    end 
+end
+
+
 """
     w = cell_quadrature(degree, xc, xq, wq, Val(Dim))
 
