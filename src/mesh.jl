@@ -3,9 +3,13 @@
 Data associated with a RegionTree `Cell`.
 """
 mutable struct CellData
+    "Indices of points in the stencil of the cell."
     points::Vector{Int}
+    "Indices of faces of the cell."
     faces::Vector{Int}
+    "If false, cell is not cut; may or may not be cut otherwise."
     cut::Bool
+    "If true, cell is not cut and its center is immersed."
     immersed::Bool 
 end
 
@@ -47,12 +51,22 @@ function is_cut(rect::HyperRectangle{Dim,T}, levset::LevelSet{Dim,T}
 end
 
 """
-    inside = is_immersed(rect, levset)
+    cut = is_cut(cell)
+
+Returns `false` if `cell` is not cut; note that a return of `true`, however, 
+only indicates that the cell *may* be cut.
+"""
+function is_cut(cell) 
+    return cell.data.cut
+end
+
+"""
+    inside = is_center_immersed(rect, levset)
 
 Returns true if the **center** of `rect` is inside the level-set `levset`, that 
 is, phi(xc) < 0.0.
 """
-function is_immersed(rect::HyperRectangle{Dim,T}, levset::LevelSet{Dim,T}
+function is_center_immersed(rect::HyperRectangle{Dim,T}, levset::LevelSet{Dim,T}
                      ) where {Dim, T}
     xc = rect.origin + 0.5*rect.widths
     return evallevelset(xc, levset) > 0.0 ? true : false
@@ -67,7 +81,11 @@ function mark_cut_cells!(root::Cell{Data, Dim, T, L}, levset::LevelSet{Dim,T}
                          ) where {Data, Dim, T, L}
     for cell in allleaves(root)
         cell.data.cut = is_cut(cell.boundary, levset)
-        cell.data.immersed = is_immersed(cell.boundary, levset) 
+        if !cell.data.cut && is_center_immersed(cell.boundary, levset)
+            # This cell is definitely not cut, and its center is immersed, so 
+            # entire cell must be immersed.
+            cell.data.immersed = true 
+        end
     end
 end
 

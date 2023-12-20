@@ -55,16 +55,18 @@ function solve_min_norm_rev!(V_bar, w_bar, V, b)
     return nothing
 end
 
-# To avoid recomputing the integrals every time, we can store the momemnts
-# This will save CPU time but might be a problem for memory, eventually.
+"""
+    m = calc_moments(root, levset, degree, cell_xavg, cell_dx)
 
-# Module variable used to store a reference to the levset;
-# this is needed for the @safe_cfunction macro
-# const mod_levset = Ref{Any}() # defined in first_derivative.jl
-
-function calc_moments()
-
+Returns the first total `degree` integral moments for all cells in the tree defined by `root`.  The tree must have been preprocessed to identify poentially cut and immersed cells using the `levset` LevelSet.  The slice `cell_xavg[:,c]` contains the reference origin for cell `c` and `cell_dx[:,c]` is the reference dimensions.  These must be consistent with the origins and dimensions later used to compute the SBP H norm.
+"""
+function calc_moments(root::Cell{Data, Dim, T, L}, levset::LevelSet{Dim,T},
+                      degree, cell_xavg, cell_dx) where {Data, Dim, T, L}
+    @assert( size(cell_xavg,1) == size(cell_dx,1) == Dim, 
+            "Size of cell_xavg/cell_dx inconsistent with Dim")
     num_cell = num_leaves(root)
+    @assert( size(cell_xavg,2) == size(cell_dx,2) == num_cell,
+            "Size of cell_xavg/cell_dx inconsistent with tree")
     num_basis = binomial(Dim + degree, Dim)
     moments = zeros(num_basis, num_cell)
 
@@ -82,27 +84,33 @@ function calc_moments()
         x -> evallevelset(x, mod_levset[]), Cdouble, (Vector{Float64},))
 
     for (c, cell) in enumerate(allleaves(root))
+        xavg = view(cell_xavg, :, c)
+        dx = view(cell_dx, :, c)
         if cell.data.immersed
             # do not integrate cells that have been confirmed immersed
             continue
-        elseif cell.data.cut 
+        elseif is_cut(cell)
             # this cell *may* be cut; use Saye's algorithm
-            wq, xq, surf_wts, surf_pts = calc_cut_quad(cell.boundary,
-                                                       safe_clevset,
-                                                       degree+1, 
-                                                       fit_degree=2*degree)
+            wq_cut, xq_cut, surf_wts, surf_pts = calc_cut_quad(
+                cell.boundary, safe_clevset, degree+1, fit_degree=degree)
             # consider resizing 1D arrays, only if need larger, with reshape
-            Vq = zeros(length(wq), num_basis)
-            workq = zeros((Dim+1)*length(wq))
-            poly_basis!(Vq, degree, xq, workq, Val(Dim))
+            for I in CartesianIndices(xq_cut)
+                xq_cut[I] = (xq_cut[I] - xavg[I[1]])/dx[I[1]] - 0.5
+            end
+            Vq_cut = zeros(length(wq), num_basis)
+            workq_cut = zeros((Dim+1)*length(wq_cut))
+            poly_basis!(Vq_cut, degree, xq_cut, workq_cut, Val(Dim))
             for i = 1:num_basis
-                moments[i, c] = dot(Vq[:,i], wq)
+                moments[i, c] = dot(Vq_cut[:,i], wq_cut)
             end
         else
             # this cell is not cut; use a tensor-product quadrature to integrate
             # Wait, these are always the same for uncut cells!!!
             # Precompute
-            quadrature!(xq, wq, cell.boundary, x1d, w1d)             
+            quadrature!(xq, wq, cell.boundary, x1d, w1d)
+            for I in CartesianIndices(xq)
+                xq[I] = (xq[I] - xavg[I[1]])/dx[I[1]] - 0.5
+            end
             poly_basis!(Vq, degree, xq, workq, Val(Dim))
             for i = 1:num_basis
                 moments[i, c] = dot(Vq[:,i], wq)
@@ -110,7 +118,6 @@ function calc_moments()
         end
     end 
 end
-
 
 """
     w = cell_quadrature(degree, xc, xq, wq, Val(Dim))

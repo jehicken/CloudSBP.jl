@@ -22,6 +22,10 @@ get_complex_step(::Type{T}) where {T <: Float64} = 1e-60
 get_complex_step(::Type{T}) where {T <: ComplexF32} = 1f-20
 get_complex_step(::Type{T}) where {T <: ComplexF64} = 1e-60
 
+# Module variable used to store a reference to the levset;
+# this is needed for the @safe_cfunction macro
+const mod_levset = Ref{Any}()
+
 include("orthopoly.jl")
 include("face.jl")
 include("mesh.jl")

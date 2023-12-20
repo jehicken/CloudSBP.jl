@@ -22,6 +22,44 @@
     @test isapprox(dot_rev, dot_fd, atol=1e-5)
 end
 
+@testset "test calc_moments: dimension $Dim, degree $degree" for Dim in 1:3, degree in 0:4
+
+    # use a unit HyperRectangle 
+    root = Cell(SVector(ntuple(i -> 0.0, Dim)),
+                SVector(ntuple(i -> i == 1 ? 2.0 : 1.0, Dim)),
+                CellData(Vector{Int}(), Vector{Int}()))
+
+    # define a level-set that cuts the HyperRectangle in half 
+    num_basis = 1
+    xc = 0.5*ones(Dim, num_basis)
+    xc[1, 1] = 1.0
+    nrm = zeros(Dim, num_basis)
+    nrm[1, 1] = 1.0
+    tang = zeros(Dim, Dim-1, num_basis)
+    tang[:, :, 1] = nullspace(reshape(nrm[:, 1], 1, Dim))
+    crv = zeros(Dim-1, num_basis)
+    rho = 100.0*num_basis    
+    levset = LevelSet{Dim,Float64}(xc, nrm, tang, crv, rho)
+
+    # Generate some DGD dof locations used to refine the background mesh
+    num_nodes = 10*binomial(Dim + degree, Dim)
+    points = rand(Dim, num_nodes)
+    CutDGD.refine_on_points!(root, points)
+    CutDGD.mark_cut_cells!(root, levset)
+
+    num_cells = num_leaves(root)
+    cell_xavg = zeros(Dim, num_cells)
+    cell_dx = zero(cell_xavg)
+    for (c,cell) in enumerate(allleaves(root))
+        cell_xavg[:,c] = center(cell)
+        cell_xavg[:,c] = 2*cell.boundary.widths
+    end
+    m = calc_moments(root, levset, degree, cell_xavg, cell_dx)
+    
+    # check that (scaled) zero-order moments sum to cut-domain volume
+    
+
+end
 
 @testset "test cell_quadrature: dimension $Dim, degree $degree" for Dim in 1:3, degree in 0:4
     num_basis = binomial(Dim + degree, Dim)
@@ -102,7 +140,7 @@ end
     # dx = 1/(num1d-1)
     # points .+= 0.2*dx*randn(Dim, num_nodes)
     
-    # refine mesh, build sentencil, and evaluate norm
+    # refine mesh, build stencil, and evaluate norm
     CutDGD.refine_on_points!(root, points)
     CutDGD.build_nn_stencils!(root, points, degree)
     H = CutDGD.diagonal_norm(root, points, degree) 

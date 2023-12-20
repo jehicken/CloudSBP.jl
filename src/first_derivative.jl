@@ -119,10 +119,6 @@ function uncut_volume_integrate!(rows, cols, Svals, root::Cell{Data, Dim, T, L},
     return nothing
 end
 
-# Module variable used to store a reference to the levset;
-# this is needed for the @safe_cfunction macro
-const mod_levset = Ref{Any}()
-
 """
     cut_volume_integrate!(rows, cols, Svals, root, levset, points, degree)
 

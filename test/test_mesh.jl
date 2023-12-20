@@ -72,13 +72,13 @@ end
     origin = SVector(ntuple(i -> -L, Dim))
     widths = SVector(ntuple(i -> 2*L, Dim))
     rect = HyperRectangle(origin, widths)
-    @test CutDGD.is_immersed(rect, levset) == true
+    @test CutDGD.is_center_immersed(rect, levset) == true
 
     # make a rectangle outside hypersphere that is not cut 
     L = 0.25
     origin = SVector(ntuple(i -> i == Dim ? 1.0001 : 0.0, Dim))
     widths = SVector(ntuple(i -> L, Dim))
     rect = HyperRectangle(origin, widths)
-    @test CutDGD.is_immersed(rect, levset) == false
+    @test CutDGD.is_center_immersed(rect, levset) == false
 
 end
