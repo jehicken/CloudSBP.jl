@@ -14,7 +14,7 @@ using SparseArrays
 #Random.seed!(42)
 
 Dim = 2
-degree = 7
+degree = 5
 
 # use a unit HyperRectangle 
 root = Cell(SVector(ntuple(i -> 0.0, Dim)),
@@ -33,10 +33,10 @@ points = zeros(Dim, num_nodes)
 ptr = 1
 dx = 1/(num1d-1)
 for i = 1:num1d
-    x = (i-1)*dx
+    x = 1 - cos(0.5*pi*(i-1)*dx)
     for j = 1:num1d 
         y = (j-1)*dx
-        points[:,ptr] = [x,y] + 0.2*dx*randn(2)
+        points[:,ptr] = [x,y] + 0.2*randn(2).*[0.5*pi*dx*sin(0.5*pi*(i-1)*dx); dx]
         global ptr += 1
     end
 end
@@ -61,7 +61,7 @@ CutDGD.build_nn_stencils!(root, points, degree)
 #end
 #println(dist_ref)
 dist_ref = ones(num_nodes)
-mu = 0.001
+mu = 0.0
 
 g = zeros(num_nodes*Dim)
 g_pert = zero(g)
@@ -80,7 +80,7 @@ for d = 1:degree
     println("Starting optimization with degree = ",d)
 
     H_tol = ones(num_nodes)
-    H_tol .*= 1e-5
+    H_tol .*= 0.5e-5
 
 for n = 1:max_iter
     global points
