@@ -22,30 +22,21 @@ end
 
 Returns true if the HyperRectangle `rect` _may be_ intersected by the level-set 
 `levset`, and returns false otherwise.  The determination regarding cut or
-not-cut first uses a level-set bound, which is conservative.  If the bound 
-indicates `rect` may be cut, the closest point on the level-set from the center 
-of `rect` is used to determine if it may be cut.
+not-cut first uses a level-set bound, which is conservative.
 
 **Note:** The quadrature algorithm will gracefully handle elements that are 
 marked as cut but are actually not cut, so being conservative is fine.
 """
 function is_cut(rect::HyperRectangle{Dim,T}, levset::LevelSet{Dim,T}
                 ) where {Dim, T}
-    xc = rect.origin + 0.5*rect.widths
-    ls, bound = boundlevelset(xc, rect.widths, levset)
+    dx = 0.5*rect.widths
+    xc = rect.origin + dx
+    ls, bound = boundlevelset(xc, dx, levset)
     if ls*(ls - sign(ls)*bound) > 0
-        # the bound has established rect is not cut 
+        # the bound has established rect is not cut
         return false
     else
-        # element may be cut; find closest point 
-        x = zeros(Dim)
-        if findclosest!(x, xc, levset)
-            # Newton's method converged
-            L = norm(0.5*rect.widths)            
-            if norm(x - xc) > L 
-                return false 
-            end
-        end
+        # element may be cut
         return true 
     end 
 end
@@ -69,7 +60,7 @@ is, phi(xc) < 0.0.
 function is_center_immersed(rect::HyperRectangle{Dim,T}, levset::LevelSet{Dim,T}
                      ) where {Dim, T}
     xc = rect.origin + 0.5*rect.widths
-    return evallevelset(xc, levset) > 0.0 ? true : false
+    return evallevelset(xc, levset) < 0.0 ? true : false
 end
 
 """

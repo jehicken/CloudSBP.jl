@@ -22,19 +22,19 @@
     @test isapprox(dot_rev, dot_fd, atol=1e-5)
 end
 
-@testset "test calc_moments: dimension $Dim, degree $degree" for Dim in 1:3, degree in 0:4
+@testset "test calc_moments: dimension $Dim, degree $degree" for Dim in 2:3, degree in 1:4
 
     # use a unit HyperRectangle 
     root = Cell(SVector(ntuple(i -> 0.0, Dim)),
-                SVector(ntuple(i -> i == 1 ? 2.0 : 1.0, Dim)),
+                SVector(ntuple(i -> 1.0, Dim)), 
                 CellData(Vector{Int}(), Vector{Int}()))
 
-    # define a level-set that cuts the HyperRectangle in half 
+    # define a level-set that cuts the HyperRectangle
     num_basis = 1
     xc = 0.5*ones(Dim, num_basis)
-    xc[1, 1] = 1.0
+    xc[1, 1] = 1/pi
     nrm = zeros(Dim, num_basis)
-    nrm[1, 1] = 1.0
+    nrm[1, 1] = 1.0 
     tang = zeros(Dim, Dim-1, num_basis)
     tang[:, :, 1] = nullspace(reshape(nrm[:, 1], 1, Dim))
     crv = zeros(Dim-1, num_basis)
@@ -47,18 +47,26 @@ end
     CutDGD.refine_on_points!(root, points)
     CutDGD.mark_cut_cells!(root, levset)
 
-    num_cells = num_leaves(root)
+    num_cells = CutDGD.num_leaves(root)
     cell_xavg = zeros(Dim, num_cells)
-    cell_dx = zero(cell_xavg)
+    cell_dx = ones(Dim, num_cells) #zero(cell_xavg)
     for (c,cell) in enumerate(allleaves(root))
         cell_xavg[:,c] = center(cell)
-        cell_xavg[:,c] = 2*cell.boundary.widths
+        cell_dx[:,c] = 2*cell.boundary.widths
     end
-    m = calc_moments(root, levset, degree, cell_xavg, cell_dx)
-    
-    # check that (scaled) zero-order moments sum to cut-domain volume
-    
+    m = CutDGD.calc_moments(root, levset, degree, cell_xavg, cell_dx)
 
+    # check that (scaled) zero-order moments sum to cut-domain volume scaled
+    # by the constant basis
+    vol = 0.0
+    for (c,cell) in enumerate(allleaves(root))
+        vol += m[1,c]
+    end
+    tet_vol = 2^Dim/factorial(Dim)
+    basis_val = 1/sqrt(tet_vol)
+    vol /= basis_val
+
+    @test isapprox(vol, 1 - 1/pi, atol=1e-10)
 end
 
 @testset "test cell_quadrature: dimension $Dim, degree $degree" for Dim in 1:3, degree in 0:4
@@ -269,9 +277,11 @@ end
 
     # compute the penalty gradient 
     mu = 1.0
+    H_tol = 1e-3.*ones(num_nodes)
     g = zeros(Dim*num_nodes)
     dist_ref = 1.0 .+ 0.1*rand(num_nodes)
-    CutDGD.penalty_grad!(g, root, points, points_init, dist_ref, mu, degree)
+    CutDGD.penalty_grad!(g, root, points, points_init, dist_ref, H_tol, mu,
+                         degree)
 
     # compare against a complex-step based directional derivative 
     p = randn(length(g))
@@ -279,7 +289,8 @@ end
 
     ceps = 1e-60
     points_cmplx = complex.(points, ceps.*reshape(p, size(points)))
-    penalty = CutDGD.penalty(root, points_cmplx, points_init, dist_ref, mu, degree)
+    penalty = CutDGD.penalty(root, points_cmplx, points_init, dist_ref, H_tol,
+                             mu, degree)
     gdotp_cmplx = imag(penalty)/ceps 
 
     @test isapprox(gdotp, gdotp_cmplx)

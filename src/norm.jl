@@ -92,12 +92,12 @@ function calc_moments(root::Cell{Data, Dim, T, L}, levset::LevelSet{Dim,T},
         elseif is_cut(cell)
             # this cell *may* be cut; use Saye's algorithm
             wq_cut, xq_cut, surf_wts, surf_pts = calc_cut_quad(
-                cell.boundary, safe_clevset, degree+1, fit_degree=degree)
-            # consider resizing 1D arrays, only if need larger, with reshape
+                cell.boundary, safe_clevset, degree+1, fit_degree=2*degree)
+            # consider resizing 1D arrays here, if need larger
             for I in CartesianIndices(xq_cut)
                 xq_cut[I] = (xq_cut[I] - xavg[I[1]])/dx[I[1]] - 0.5
             end
-            Vq_cut = zeros(length(wq), num_basis)
+            Vq_cut = zeros(length(wq_cut), num_basis)
             workq_cut = zeros((Dim+1)*length(wq_cut))
             poly_basis!(Vq_cut, degree, xq_cut, workq_cut, Val(Dim))
             for i = 1:num_basis
@@ -117,6 +117,7 @@ function calc_moments(root::Cell{Data, Dim, T, L}, levset::LevelSet{Dim,T},
             end
         end
     end 
+    return moments
 end
 
 """
