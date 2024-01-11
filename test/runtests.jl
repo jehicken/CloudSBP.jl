@@ -18,8 +18,8 @@ Random.seed!(42)
 
 @testset "CutDGD.jl" begin
     
-    @testset "test diagonal norm routines" begin
-        include("test_diag_norm.jl")
+    @testset "test norm routines" begin
+        include("test_norm.jl")
     end
 
     if false

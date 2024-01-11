@@ -92,7 +92,7 @@ function calc_moments(root::Cell{Data, Dim, T, L}, levset::LevelSet{Dim,T},
         elseif is_cut(cell)
             # this cell *may* be cut; use Saye's algorithm
             wq_cut, xq_cut, surf_wts, surf_pts = calc_cut_quad(
-                cell.boundary, safe_clevset, degree+1, fit_degree=2*degree)
+                cell.boundary, safe_clevset, degree+1, fit_degree=degree+1)
             # consider resizing 1D arrays here, if need larger
             for I in CartesianIndices(xq_cut)
                 xq_cut[I] = (xq_cut[I] - xavg[I[1]])/dx[I[1]] - 0.5
@@ -138,7 +138,7 @@ function cell_quadrature(degree, xc, xq, wq, ::Val{Dim}) where {Dim}
     upper = maximum([real.(xc) real.(xq)], dims=2)
     dx = upper - lower 
     xavg = 0.5*(upper + lower)
-    xavg .*= 0.0
+    # xavg .*= 0.0
     dx[:] .*= 1.001
     xc_trans = zero(xc)
     for I in CartesianIndices(xc)
@@ -178,7 +178,7 @@ function cell_quadrature(degree, xc::AbstractArray{ComplexF64,2}, xq, wq,
     upper = maximum([real.(xc) real.(xq)], dims=2)
     dx = upper - lower 
     xavg = 0.5*(upper + lower)
-    xavg .*= 0.0
+    #xavg .*= 0.0
     dx[:] .*= 1.001
     xc_trans = zero(xc)
     for I in CartesianIndices(xc)
@@ -228,7 +228,7 @@ function cell_quadrature_rev!(xc_bar, degree, xc, xq, wq, w_bar, ::Val{Dim}
     upper = maximum([real.(xc) real.(xq)], dims=2)
     dx = upper - lower 
     xavg = 0.5*(upper + lower)
-    xavg .*= 0.0
+    #xavg .*= 0.0
     dx[:] .*= 1.001
     xc_trans = zero(xc)
     for I in CartesianIndices(xc)

@@ -69,6 +69,67 @@ end
     @test isapprox(vol, 1 - 1/pi, atol=1e-10)
 end
 
+# sphere_vol computes the volume of the Dim dimensional hypersphere
+function sphere_vol(r, ::Val{Dim}) where {Dim}
+    return 2*pi*r^2*sphere_vol(r, Val(Dim-2))/Dim
+end
+sphere_vol(r, ::Val{0}) = 1
+sphere_vol(r, ::Val{1}) = 2*r
+
+@testset "test calc_moments (sphere): dimension $Dim, degree $degree" for Dim in 2:3, degree in 1:4
+
+    # use a unit HyperRectangle 
+    root = Cell(SVector(ntuple(i -> 0.0, Dim)),
+                SVector(ntuple(i -> 1.0, Dim)), 
+                CellData(Vector{Int}(), Vector{Int}()))
+
+    # define a level-set for a circle 
+    num_basis = 2*4^Dim
+    xc = randn(Dim, num_basis)
+    nrm = zero(xc) 
+    tang = zeros(Dim, Dim-1, num_basis)
+    crv = zeros(Dim-1, num_basis)
+    R = 1/3
+    for i = 1:num_basis 
+        #theta = 2*pi*(i-1)/(num_basis-1)
+        #xc[:,i] = R*[cos(theta); sin(theta)] + [0.5;0.5]
+        #nrm[:,i] = [cos(theta); sin(theta)]
+        nrm[:,i] = xc[:,i]/norm(xc[:,i])
+        xc[:,i] = nrm[:,i]*R + 0.5*ones(Dim)
+        tang[:,:,i] = nullspace(reshape(nrm[:, i], 1, Dim))
+        crv[:,i] .= 1/R
+    end
+    rho = 100.0*num_basis    
+    levset = LevelSet{Dim,Float64}(xc, nrm, tang, crv, rho)
+
+    # Generate some DGD dof locations used to refine the background mesh
+    num_nodes = 10*binomial(Dim + degree, Dim)
+    points = rand(Dim, num_nodes)
+    CutDGD.refine_on_points!(root, points)
+    CutDGD.mark_cut_cells!(root, levset)
+
+    num_cells = CutDGD.num_leaves(root)
+    cell_xavg = zeros(Dim, num_cells)
+    cell_dx = ones(Dim, num_cells) #zero(cell_xavg)
+    for (c,cell) in enumerate(allleaves(root))
+        cell_xavg[:,c] = center(cell)
+        cell_dx[:,c] = 2*cell.boundary.widths
+    end
+    m = CutDGD.calc_moments(root, levset, degree, cell_xavg, cell_dx)
+
+    # check that (scaled) zero-order moments sum to cut-domain volume scaled
+    # by the constant basis
+    vol = 0.0
+    for (c,cell) in enumerate(allleaves(root))
+        vol += m[1,c]
+    end
+    tet_vol = 2^Dim/factorial(Dim)
+    basis_val = 1/sqrt(tet_vol)
+    vol /= basis_val
+
+    @test isapprox(vol, 1 - sphere_vol(R, Val(Dim)) , rtol=0.01)
+end
+
 @testset "test cell_quadrature: dimension $Dim, degree $degree" for Dim in 1:3, degree in 0:4
     num_basis = binomial(Dim + degree, Dim)
     num_nodes = num_basis

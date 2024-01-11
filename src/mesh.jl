@@ -37,6 +37,15 @@ function is_cut(rect::HyperRectangle{Dim,T}, levset::LevelSet{Dim,T}
         return false
     else
         # element may be cut
+        # findclosest! either has a bug or is not robust
+        # x = zeros(Dim)
+        # if findclosest!(x, xc, levset)
+        #    L = norm(x - xc)            
+        # end
+        if abs(ls) > norm(dx)
+            # todo: this only works if ls is a true distance function
+            return false 
+        end
         return true 
     end 
 end
