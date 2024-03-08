@@ -11,10 +11,16 @@ mutable struct CellData
     cut::Bool
     "If true, cell is not cut and its center is immersed."
     immersed::Bool 
+    "Integral moments (view, not owned)"
+    moments::AbstractVector{Float64}
+    "Reference position for conditioning Vandermonde matrices"
+    xref::Vector{Float64} # use static array with type param?
+    "Reference scaling for conditioning Vandermonde matrices"
+    dx::Vector{Float64} # use static array with type param?
 end
 
 function CellData(points::Vector{Int}, faces::Vector{Int})
-    return CellData(points, faces, false, false)
+    return CellData(points, faces, false, false, [], [], [])
 end
 
 """
@@ -120,7 +126,7 @@ Returns a `CellData` struct based on the given `cell`.
 function get_data(cell, child_indices)
     return CellData(deepcopy(cell.data.points), 
                     deepcopy(cell.data.faces), cell.data.cut,
-                    cell.data.immersed)
+                    cell.data.immersed, [], [], [])
 end
 
 """
@@ -165,7 +171,7 @@ Returns data for child of `cell` with `indices`.
 function refine_data(r::PointRefinery, cell::Cell, indices)
     child_bnd = child_boundary(cell, indices)
     return CellData(get_points_inside(child_bnd, r.x_view,
-                    cell.data.points), deepcopy(cell.data.faces), false, false)
+                    cell.data.points), deepcopy(cell.data.faces))
 end
 
 """
@@ -178,6 +184,7 @@ function refine_on_points!(root, points)
     root.data.points = get_points_inside(root.boundary, points)
     r = PointRefinery(view(points, :, :))
     adaptivesampling!(root, r)
+    return nothing
 end
 
 """
@@ -213,4 +220,26 @@ function build_nn_stencils!(root, points, degree)
         #     end 
         # end
     end
+    return nothing
+end
+
+"""
+    set_xref_and_dx!(root, points)
+
+For each `leaf` in `root`, finds a reference position and reference scale for
+`leaf.data.xref` and `leaf.data.dx`, respectively.  The reference position is,
+roughly, the average of the coordinates `points[:,leaf.data.points]` and the 
+`leaf`'s boundary.  The reference scale is the extent of the coordinates and 
+boundary.
+"""
+function set_xref_and_dx!(root, points)
+    for leaf in allleaves(root)
+        xpts = view(points, :, leaf.data.points)
+        rect = leaf.boundary
+        lower = vec(minimum([xpts rect.origin], dims=2))
+        upper = vec(maximum([xpts (rect.origin + rect.widths)], dims=2))
+        leaf.data.dx = upper - lower 
+        leaf.data.xref = 0.5*(upper + lower)
+    end
+    return nothing
 end

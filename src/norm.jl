@@ -56,17 +56,21 @@ function solve_min_norm_rev!(V_bar, w_bar, V, b)
 end
 
 """
-    m = calc_moments(root, levset, degree, cell_xavg, cell_dx)
+    m = calc_moments(root, levset, degree)
 
-Returns the first total `degree` integral moments for all cells in the tree defined by `root`.  The tree must have been preprocessed to identify poentially cut and immersed cells using the `levset` LevelSet.  The slice `cell_xavg[:,c]` contains the reference origin for cell `c` and `cell_dx[:,c]` is the reference dimensions.  These must be consistent with the origins and dimensions later used to compute the SBP H norm.
+Returns the first total `degree` integral moments for all cells in the tree
+defined by `root`.  The tree must have been preprocessed to identify poentially
+cut and immersed cells using the `levset` level-set function.  In addition, the 
+`cell.data.xref` and `cell.data.dx` fields must containt the reference origin
+for each cell.
+
+WARNING: The signature of the function `levset` must of the form
+levset(Vector{Float64})::Float64, because this assumption is used when it is
+wrapped using `csafe_function`.
 """
-function calc_moments(root::Cell{Data, Dim, T, L}, levset::LevelSet{Dim,T},
-                      degree, cell_xavg, cell_dx) where {Data, Dim, T, L}
-    @assert( size(cell_xavg,1) == size(cell_dx,1) == Dim, 
-            "Size of cell_xavg/cell_dx inconsistent with Dim")
+function calc_moments(root::Cell{Data, Dim, T, L}, levset, degree
+                      ) where {Data, Dim, T, L}
     num_cell = num_leaves(root)
-    @assert( size(cell_xavg,2) == size(cell_dx,2) == num_cell,
-            "Size of cell_xavg/cell_dx inconsistent with tree")
     num_basis = binomial(Dim + degree, Dim)
     moments = zeros(num_basis, num_cell)
 
@@ -80,19 +84,20 @@ function calc_moments(root::Cell{Data, Dim, T, L}, levset::LevelSet{Dim,T},
 
     # set up the level-set function for passing to calc_cut_quad below
     mod_levset[] = levset
-    safe_clevset = @safe_cfunction( 
-        x -> evallevelset(x, mod_levset[]), Cdouble, (Vector{Float64},))
+    #safe_clevset = @safe_cfunction( 
+    #    x -> evallevelset(x, mod_levset[]), Cdouble, (Vector{Float64},))
+    safe_clevset = @safe_cfunction( x -> mod_levset[](x), Float64, (Vector{Float64},))
 
     for (c, cell) in enumerate(allleaves(root))
-        xavg = view(cell_xavg, :, c)
-        dx = view(cell_dx, :, c)
+        xavg = cell.data.xref #view(cell_xavg, :, c)
+        dx = cell.data.dx #view(cell_dx, :, c)
         if cell.data.immersed
             # do not integrate cells that have been confirmed immersed
             continue
         elseif is_cut(cell)
             # this cell *may* be cut; use Saye's algorithm
             wq_cut, xq_cut, surf_wts, surf_pts = calc_cut_quad(
-                cell.boundary, safe_clevset, degree+1, fit_degree=degree+1)
+                cell.boundary, safe_clevset, degree+1, fit_degree=degree)
             # consider resizing 1D arrays here, if need larger
             for I in CartesianIndices(xq_cut)
                 xq_cut[I] = (xq_cut[I] - xavg[I[1]])/dx[I[1]] - 0.5
@@ -103,10 +108,10 @@ function calc_moments(root::Cell{Data, Dim, T, L}, levset::LevelSet{Dim,T},
             for i = 1:num_basis
                 moments[i, c] = dot(Vq_cut[:,i], wq_cut)
             end
+            cell.data.moments = view(moments, :, c)
         else
             # this cell is not cut; use a tensor-product quadrature to integrate
-            # Wait, these are always the same for uncut cells!!!
-            # Precompute
+            # Precompute?
             quadrature!(xq, wq, cell.boundary, x1d, w1d)
             for I in CartesianIndices(xq)
                 xq[I] = (xq[I] - xavg[I[1]])/dx[I[1]] - 0.5
@@ -115,9 +120,20 @@ function calc_moments(root::Cell{Data, Dim, T, L}, levset::LevelSet{Dim,T},
             for i = 1:num_basis
                 moments[i, c] = dot(Vq[:,i], wq)
             end
+            cell.data.moments = view(moments, :, c)
         end
     end 
     return moments
+end
+
+"""
+    m = calc_moments(root, degree)
+
+This variant is useful when you want moments for all cells in the tree `root`.
+"""
+function calc_moments(root::Cell{Data, Dim, T, L}, degree) where {Data, Dim, T, L}
+    levset(x) = 1.0
+    return calc_moments(root, levset, degree)
 end
 
 """
@@ -207,6 +223,61 @@ function cell_quadrature(degree, xc::AbstractArray{ComplexF64,2}, xq, wq,
     return complex.(w, dw)
 end
 
+"""
+    w = cell_quadrature(degree, xc, moments, xavg, dx, Val(Dim))
+
+Given a set of total `degree` polynomial `moments`, computes a quadrature that
+is exact for those moments based on the nodes `xc`.  The arrays `xavg` and `dx`
+are used to shift and scale, respectively, the nodes in `xc` to improve 
+conditioning of the Vandermonde matrix.  The same scaling and shifts must have
+been applied when computing the integral `moments`.
+"""
+function cell_quadrature(degree, xc, moments, xavg, dx, ::Val{Dim}) where {Dim}
+    @assert( size(xc,1) == length(dx) == length(xavg) == Dim,
+             "xc/dx/xavg/Dim are inconsistent")
+    num_basis = binomial(Dim + degree, Dim)
+    @assert( length(moments) == num_basis, "moments has inconsistent size")
+    num_nodes = size(xc, 2)
+    @assert( num_nodes >= num_basis, "fewer nodes than basis functions")
+    # apply an affine transformation to the points xc
+    xc_trans = zero(xc)
+    for I in CartesianIndices(xc)
+        xc_trans[I] = (xc[I] - xavg[I[1]])/dx[I[1]] - 0.5
+    end
+    # evaluate the polynomial basis at the node points 
+    workc = zeros(eltype(xc), (Dim+1)*num_nodes)
+    V = zeros(eltype(xc), num_nodes, num_basis)
+    poly_basis!(V, degree, xc_trans, workc, Val(Dim))
+    # find the weights that satisfy the moments
+    w = zeros(num_nodes)
+    solve_min_norm!(w, V, moments)
+    return w
+end
+
+function cell_quadrature(degree, xc::AbstractArray{ComplexF64,2}, moments, xavg,
+                         dx, ::Val{Dim}) where {Dim}
+    @assert( size(xc,1) == length(dx) == length(xavg) == Dim,
+             "xc/dx/xavg/Dim are inconsistent")
+    num_basis = binomial(Dim + degree, Dim)
+    @assert( length(moments) == num_basis, "moments has inconsistent size")
+    num_nodes = size(xc, 2)
+    @assert( num_nodes >= num_basis, "fewer nodes than basis functions")
+    # apply an affine transformation to the points xc
+    xc_trans = zero(xc)
+    for I in CartesianIndices(xc)
+        xc_trans[I] = (xc[I] - xavg[I[1]])/dx[I[1]] - 0.5
+    end
+    # evaluate the polynomial basis at the node points 
+    workc = zeros(eltype(xc), (Dim+1)*num_nodes)
+    V = zeros(eltype(xc), num_nodes, num_basis)
+    poly_basis!(V, degree, xc_trans, workc, Val(Dim))
+    # find the weights that satisfy the moments
+    w = zeros(num_nodes)
+    dw = zeros(num_nodes)
+    dV = imag.(V)
+    solve_min_norm_diff!(w, dw, real.(V), dV, moments)    
+    return complex.(w, dw)
+end
 
 """
     cell_quadrature_rev!(xc_bar, degree, xc, xq, wq, w_bar, Val(Dim))
@@ -262,6 +333,43 @@ function cell_quadrature_rev!(xc_bar, degree, xc, xq, wq, w_bar, ::Val{Dim}
     return nothing
 end
 
+"""
+    cell_quadrature_rev!(xc_bar, degree, xc, moments, xavg, dx, w_bar, Val(Dim))
+
+Reverse mode differentiated of the moment-based variant of `cell_quadrature`.
+Returns the derivatives of `dot(w, w_bar)` with respect to `xc` in the array
+`xc_bar`.  All other inputs are the same as the moment-based variant of
+`cell_quadrature`.
+"""
+function cell_quadrature_rev!(xc_bar, degree, xc, moments, xavg, dx, w_bar,
+                              ::Val{Dim}) where {Dim}
+    @assert( size(xc,1) == size(xc_bar,1) == length(dx) == length(xavg) == Dim,
+             "xc/xc_bar/dx/xavg/Dim are inconsistent")
+    num_basis = binomial(Dim + degree, Dim)
+    @assert( length(moments) == num_basis, "moments has inconsistent size")
+    num_nodes = size(xc, 2)
+    @assert( num_nodes >= num_basis, "fewer nodes than basis functions")
+    # apply an affine transformation to the points xc
+    xc_trans = zero(xc)
+    for I in CartesianIndices(xc)
+        xc_trans[I] = (xc[I] - xavg[I[1]])/dx[I[1]] - 0.5
+    end
+    # evaluate the polynomial basis at the node points 
+    workc = zeros(eltype(xc), (Dim+1)*num_nodes)
+    V = zeros(eltype(xc), num_nodes, num_basis)
+    poly_basis!(V, degree, xc_trans, workc, Val(Dim))
+    dV = zeros(num_nodes, num_basis, Dim)
+    poly_basis_derivatives!(dV, degree, xc_trans, Val(Dim))
+    # compute the derivative of the objective w.r.t. V
+    V_bar = zero(V)
+    solve_min_norm_rev!(V_bar, w_bar, V, moments)
+    # compute the derivative of the objective w.r.t. xc 
+    for d = 1:Dim
+        xc_bar[d,:] += sum(V_bar[:,:].*dV[:,:,d],dims=2)/dx[d]
+    end
+    return nothing
+end
+
 function diagonal_norm(root::Cell{Data, Dim, T, L}, points, degree
                        ) where {Data, Dim, T, L}
     num_nodes = size(points, 2)
@@ -277,6 +385,26 @@ function diagonal_norm(root::Cell{Data, Dim, T, L}, points, degree
         # get cell quadrature and add to global norm
         w = cell_quadrature(degree, nodes, xq, wq, Val(Dim))
         #w = nodes[Dim,:].*nodes[1,:]
+        for i = 1:length(cell.data.points)
+            H[cell.data.points[i]] += w[i]
+        end
+    end
+    return H
+end
+
+function diagonal_norm(root::Cell{Data, Dim, T, L}, points, degree
+                       ) where {Data, Dim, T, L}
+    num_nodes = size(points, 2)
+    @assert( num_nodes == size(moments,2), "points/moments inconsistent" )
+    @assert( size(points,1) == size(xavg,1) == size(dx,1) == Dim,
+            "points/xavg/dx inconsistent with Dim" )
+    H = zeros(eltype(points), num_nodes)
+    for cell in allleaves(root)
+        # get the nodes in this cell's stencil
+        nodes = view(points, :, cell.data.points)
+        # get cell quadrature and add to global norm
+        w = cell_quadrature(degree, nodes, cell.data.moments, cell.data.xref,
+                            cell.data.dx, Val(Dim))
         for i = 1:length(cell.data.points)
             H[cell.data.points[i]] += w[i]
         end
@@ -518,6 +646,8 @@ function penalty(root::Cell{Data, Dim, T, L}, xc, xc_init, dist_ref, H_tol,
 
     return phi
 end
+
+
 
 function penalty_grad!(g::AbstractVector{T}, root::Cell{Data, Dim, T, L}, 
                        xc, xc_init, dist_ref, H_tol, mu, degree

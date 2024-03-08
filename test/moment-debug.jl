@@ -16,7 +16,7 @@ using CutQuad
 Random.seed!(42)
 
 plot = false
-degree = 3
+degree = 6
 Dim = 3
 
 # use a unit HyperRectangle 
@@ -37,7 +37,7 @@ if false
     crv = zeros(Dim-1, num_basis)
 else 
     # define a level-set for a circle 
-    num_basis = 128 #256
+    num_basis = 256
     #xc = zeros(Dim, num_basis)
     xc = randn(Dim, num_basis)
     nrm = zero(xc) 
@@ -61,7 +61,12 @@ levset = LevelSet{Dim,Float64}(xc, nrm, tang, crv, rho)
 num_nodes = 10*binomial(Dim + degree, Dim)
 points = rand(Dim, num_nodes)
 CutDGD.refine_on_points!(root, points)
+for cell in allleaves(root)
+    split!(cell, CutDGD.get_data)
+end
+
 CutDGD.mark_cut_cells!(root, levset)
+
 
 num_cell = CutDGD.num_leaves(root)
 cell_xavg = zeros(Dim, num_cell)
@@ -122,7 +127,7 @@ for (c, cell) in enumerate(allleaves(root))
         println("\tuse Saye's algorithm")
         # this cell *may* be cut; use Saye's algorithm
         wq_cut, xq_cut, surf_wts, surf_pts = calc_cut_quad(
-        cell.boundary, safe_clevset, degree+1, fit_degree=degree+1)
+        cell.boundary, safe_clevset, degree+1, fit_degree=degree)
         println("\tnumber quad points = ",length(wq_cut))
         if plot
             PyPlot.plot(xq_cut[1,:], xq_cut[2,:], "bs", ms=4)
