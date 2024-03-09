@@ -39,30 +39,20 @@ end
     tang[:, :, 1] = nullspace(reshape(nrm[:, 1], 1, Dim))
     crv = zeros(Dim-1, num_basis)
     rho = 100.0*num_basis    
-
-    #levset[] = LevelSet{Dim,Float64}(xc, nrm, tang, crv, rho)
-    #safe_clevset = @safe_cfunction( 
-    #    x -> evallevelset(x, levset[]), Cdouble, (Vector{Float64},))
     levset = LevelSet{Dim,Float64}(xc, nrm, tang, crv, rho)
     levset_func(x) = evallevelset(x, levset)
 
     # Generate some DGD dof locations used to refine the background mesh
-    num_nodes = 10*binomial(Dim + degree, Dim)
+    num_nodes = 5*binomial(Dim + degree, Dim)
     points = rand(Dim, num_nodes)
     CutDGD.refine_on_points!(root, points)
     CutDGD.mark_cut_cells!(root, levset)
-
-    # num_cells = CutDGD.num_leaves(root)
-    # cell_xavg = zeros(Dim, num_cells)
-    # cell_dx = ones(Dim, num_cells) #zero(cell_xavg)
-    # for (c,cell) in enumerate(allleaves(root))
-    #     cell_xavg[:,c] = center(cell)
-    #     cell_dx[:,c] = 2*cell.boundary.widths
-    # end
     CutDGD.set_xref_and_dx!(root, points)
-    m = CutDGD.calc_moments(root, levset_func, degree) #, cell_xavg, cell_dx)
 
-    # check that (scaled) zero-order moments sum to cut-domain volume scaled
+    # evaluate the moments and ...
+    m = CutDGD.calc_moments!(root, levset_func, degree)
+
+    # ...check that (scaled) zero-order moments sum to cut-domain volume scaled
     # by the constant basis
     vol = 0.0
     for (c,cell) in enumerate(allleaves(root))
@@ -108,9 +98,6 @@ sphere_vol(r, ::Val{1}) = 2*r
     levset = LevelSet{Dim,Float64}(xc, nrm, tang, crv, rho)
     levset_func(x) = evallevelset(x, levset)
 
-    #safe_clevset = @safe_cfunction( 
-    #    x -> evallevelset(x, levset), Cdouble, (Vector{Float64},))
-
     # Generate some DGD dof locations used to refine the background mesh
     num_nodes = 10*binomial(Dim + degree, Dim)
     points = rand(Dim, num_nodes)
@@ -119,18 +106,12 @@ sphere_vol(r, ::Val{1}) = 2*r
         split!(cell, CutDGD.get_data)
     end
     CutDGD.mark_cut_cells!(root, levset)
-
-    # num_cells = CutDGD.num_leaves(root)
-    # cell_xavg = zeros(Dim, num_cells)
-    # cell_dx = ones(Dim, num_cells) #zero(cell_xavg)
-    # for (c,cell) in enumerate(allleaves(root))
-    #     cell_xavg[:,c] = center(cell)
-    #     cell_dx[:,c] = 2*cell.boundary.widths
-    # end
     CutDGD.set_xref_and_dx!(root, points)
-    m = CutDGD.calc_moments(root, levset_func, degree) #, cell_xavg, cell_dx)
 
-    # check that (scaled) zero-order moments sum to cut-domain volume scaled
+    # evaluate the moments and ...
+    m = CutDGD.calc_moments!(root, levset_func, degree) 
+
+    # ...check that (scaled) zero-order moments sum to cut-domain volume scaled
     # by the constant basis
     vol = 0.0
     for (c,cell) in enumerate(allleaves(root))
@@ -150,11 +131,9 @@ end
                 SVector(ntuple(i -> 1.0, Dim)),
                 CellData(Vector{Int}(), Vector{Int}()))
     num_cells = 1
-    #cell_xavg = 0.5*ones(Dim, num_cells)
-    #cell_dx = ones(Dim, num_cells)
     cell.data.xref = 0.5*ones(Dim)
     cell.data.dx = ones(Dim)
-    m = CutDGD.calc_moments(cell, degree) #, cell_xavg, cell_dx)
+    m = CutDGD.calc_moments!(cell, degree)
     xc = randn(Dim, num_nodes) .+ 0.5
     w = CutDGD.cell_quadrature(degree, xc, m, cell.data.xref, cell.data.dx,
                                Val(Dim))
@@ -183,11 +162,9 @@ end
                 SVector(ntuple(i -> 1.0, Dim)),
                 CellData(Vector{Int}(), Vector{Int}()))
     num_cells = 1
-    #cell_xavg = 0.5*ones(Dim, num_cells)
-    #cell_dx = ones(Dim, num_cells)
     cell.data.xref = 0.5*ones(Dim)
     cell.data.dx = ones(Dim)
-    m = CutDGD.calc_moments(cell, degree) #, cell_xavg, cell_dx)
+    m = CutDGD.calc_moments!(cell, degree)
     xc = randn(Dim, num_nodes) .+ 0.5
 
     # compute the derivative of the (weighted) quad weights w.r.t. xc 
@@ -262,7 +239,8 @@ end
     @test isapprox(dot_prod, dot_prod_cmplx)
 end
 
-@testset "test diagonal_norm: dimension $Dim, degree $degree" for Dim in 1:3, degree in 0:1
+
+@testset "test diagonal_norm!: dimension $Dim, degree $degree" for Dim in 1:3, degree in 0:4
 
     # use a unit HyperRectangle 
     root = Cell(SVector(ntuple(i -> 0.0, Dim)),
@@ -271,42 +249,25 @@ end
 
     # DGD dof locations
     num_basis = binomial(Dim + degree, Dim)
-
-    num_nodes = 10*num_basis
+    num_nodes = 5*num_basis
     points = rand(Dim, num_nodes)
-
-    # num1d = 3*num_basis
-    # num_nodes = num1d^Dim
-    # points = zeros(Dim, num_nodes)
-    # xc = reshape(points, (Dim, ntuple(i -> num1d, Dim)...))
-    # for I in CartesianIndices(xc)
-    #     # I[1] is the coordinate, so I[I[1] + 1] is the index for that coord
-    #     xc[I] = (I[I[1] + 1] - 1)/(num1d-1)
-    # end
-
-    # dx = 1/(num1d-1)
-    # points .+= 0.2*dx*randn(Dim, num_nodes)
     
     # refine mesh, build stencil, and evaluate norm
     CutDGD.refine_on_points!(root, points)
     CutDGD.build_nn_stencils!(root, points, degree)
-    H = CutDGD.diagonal_norm(root, points, degree) 
+    CutDGD.set_xref_and_dx!(root, points)
+    m = CutDGD.calc_moments!(root, degree)
+    H = zeros(num_nodes)
+    CutDGD.diagonal_norm!(H, root, points, degree)
 
-    count = 0
-    for i = 1:num_nodes 
-        if H[i] < 0.0
-            #println("Negative weight found: ",H[i])
-            count += 1
-        end
-    end
-    println(count,"/",num_nodes," negative weights found!!!!!!")
-
+    # get quadrature to compute reference integrals
     x1d, w1d = CutDGD.lg_nodes(degree+1) # could also use lgl_nodes
     num_quad = length(x1d)^Dim
     xq = zeros(Dim, num_quad)
     wq = zeros(num_quad)
     CutDGD.quadrature!(xq, wq, root.boundary, x1d, w1d)
     
+    # compare H-based quadrature with LG-based quadrature
     V = zeros(num_nodes, num_basis)
     CutDGD.monomial_basis!(V, degree, points, Val(Dim))
     Vq = zeros(num_quad, num_basis)
@@ -320,6 +281,7 @@ end
 end
 
 @testset "test diagonal_norm_rev!: dimension $Dim, degree $degree" for Dim in 1:3, degree in 0:4
+
     # use a unit HyperRectangle 
     root = Cell(SVector(ntuple(i -> 0.0, Dim)),
                 SVector(ntuple(i -> 1.0, Dim)),
@@ -327,12 +289,14 @@ end
 
     # DGD dof locations
     num_basis = binomial(Dim + degree, Dim)
-    num_nodes = 10*num_basis
+    num_nodes = 5*num_basis
     points = rand(Dim, num_nodes)
     
     # refine mesh, build sentencil, and evaluate norm
     CutDGD.refine_on_points!(root, points)
     CutDGD.build_nn_stencils!(root, points, degree)
+    CutDGD.set_xref_and_dx!(root, points)
+    m = CutDGD.calc_moments!(root, degree)
 
     # get the derivative of dot(H_bar, H) in direction p
     H_bar = randn(num_nodes)
@@ -344,7 +308,8 @@ end
     # get the derivative using complex step
     ceps = 1e-60
     points_cmplx = complex.(points, ceps*p)
-    H_cmplx = CutDGD.diagonal_norm(root, points_cmplx, degree) 
+    H_cmplx = zeros(ComplexF64, num_nodes)
+    CutDGD.diagonal_norm!(H_cmplx, root, points_cmplx, degree) 
     dot_prod_cmplx = dot(H_bar, imag.(H_cmplx)/ceps)
 
     @test isapprox(dot_prod, dot_prod_cmplx)
@@ -405,7 +370,6 @@ end
 
     # DGD dof locations
     num_basis = binomial(Dim + degree, Dim)
-
     num_nodes = 5*num_basis
     points = rand(Dim, num_nodes)
     points_init = points + 0.05*rand(Dim, num_nodes)
@@ -413,6 +377,8 @@ end
     # refine mesh and build stencil
     CutDGD.refine_on_points!(root, points)
     CutDGD.build_nn_stencils!(root, points, degree)
+    CutDGD.set_xref_and_dx!(root, points)
+    m = CutDGD.calc_moments!(root, degree)
 
     # compute the penalty gradient 
     mu = 1.0

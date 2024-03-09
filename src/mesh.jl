@@ -24,6 +24,18 @@ function CellData(points::Vector{Int}, faces::Vector{Int})
 end
 
 """
+    box_center, box_dx = get_bounding_box(rect, x)
+
+For a given HyperRectangle `rect` and point cloud `x`, returns the bounding box
+center and lengths that enclose both `rect` and `x`.
+"""
+function get_bounding_box(rect, x)
+    lower = vec(minimum([x  rect.origin], dims=2))
+    upper = vec(maximum([x (rect.origin + rect.widths)], dims=2))
+    return 0.5*(upper + lower), (upper - lower)
+end
+
+"""
     cut = is_cut(rect, levset)
 
 Returns true if the HyperRectangle `rect` _may be_ intersected by the level-set 
@@ -64,6 +76,15 @@ only indicates that the cell *may* be cut.
 """
 function is_cut(cell) 
     return cell.data.cut
+end
+
+"""
+    im = is_immersed(cell)
+
+Returns `true` if cell is not cut and its center is immersed.
+"""
+function is_immersed(cell)
+    return cell.data.immersed
 end
 
 """
@@ -198,27 +219,55 @@ well-conditioned Vandermonde matrix of total degree `degree`.
 function build_nn_stencils!(root, points, degree)
     kdtree = KDTree(points, leafsize = 10)
     # find the necessary nearest neighbors
-    dim = size(points,1)
-    max_stencil_iter = 5
+    Dim = size(points,1)
+    max_stencil_iter = degree
     sortres = true
+    tol = 5.0
+    # for leaf in allleaves(root)
+    #     # the `degree^2` below was found using experiments on uniform grids
+    #     num_nbr = binomial(dim + degree, dim) # + degree #+ degree^2 # + degree
+    #     #num_nbr = (degree+1)^dim
+    #     xc = center(leaf)
+    #     indices, dists = knn(kdtree, xc, num_nbr, sortres)
+    #     #println(indices)
+    #     #println(dists)
+    #     #V = calcVandermonde(xc, view(points, :, indices), degree) 
+    #     leaf.data.points = indices
+    #     # for k = 1:max_stencil_iter
+    #     #     indices, dists = knn(tree, points, num_nbr, sortres = true)
+    #     #     # build the Vandermonde matrix and check its condition number
+    #     #     V = calcVandermonde(xc, view(points, :, indices), degree)
+    #     #     if cond(V) < tol*exp(degree)
+    #     #         break
+    #     #     end 
+    #     # end
+    # end
     for leaf in allleaves(root)
-        # the `degree^2` below was found using experiments on uniform grids
-        num_nbr = binomial(dim + degree, dim) + degree #+ degree^2 # + degree
-        #num_nbr = (degree+1)^dim
         xc = center(leaf)
-        indices, dists = knn(kdtree, xc, num_nbr, sortres)
-        #println(indices)
-        #println(dists)
-        #V = calcVandermonde(xc, view(points, :, indices), degree) 
-        leaf.data.points = indices
-        # for k = 1:max_stencil_iter
-        #     indices, dists = knn(tree, points, num_nbr, sortres = true)
-        #     # build the Vandermonde matrix and check its condition number
-        #     V = calcVandermonde(xc, view(points, :, indices), degree)
-        #     if cond(V) < tol*exp(degree)
-        #         break
-        #     end 
-        # end
+        num_basis = binomial(Dim + degree, Dim)
+        for k = 1:max_stencil_iter 
+            num_nodes = binomial(Dim + degree + 1, Dim) + (k-1)*degree
+            indices, dists = knn(kdtree, xc, num_nodes, sortres)
+            # build the Vandermonde matrix and check its condition number
+            xpts = points[:, indices]
+            xref, dx = get_bounding_box(leaf.boundary, xpts)
+            dx *= 1.001
+            for I in CartesianIndices(xpts)
+                xpts[I] = (xpts[I] - xref[I[1]])/dx[I[1]] - 0.5
+            end
+            workc = zeros((Dim+1)*num_nodes)
+            V = zeros(num_nodes, num_basis)
+            poly_basis!(V, degree, xpts, workc, Val(Dim))
+            #println("iteration ",k,": cond(V) = ",cond(V))
+            if cond(V) < tol*10^degree
+                # the condition number is acceptable
+                leaf.data.points = indices
+                break
+            end
+            if k == max_stencil_iter 
+                error("Failed to find acceptable stencil.")
+            end
+        end
     end
     return nothing
 end
@@ -235,11 +284,9 @@ boundary.
 function set_xref_and_dx!(root, points)
     for leaf in allleaves(root)
         xpts = view(points, :, leaf.data.points)
-        rect = leaf.boundary
-        lower = vec(minimum([xpts rect.origin], dims=2))
-        upper = vec(maximum([xpts (rect.origin + rect.widths)], dims=2))
-        leaf.data.dx = upper - lower 
-        leaf.data.xref = 0.5*(upper + lower)
+        leaf.data.xref, leaf.data.dx = get_bounding_box(leaf.boundary, xpts)
+        # 1.001 prevents numerical issues in the orthogonal polynomials
+        leaf.data.dx[:] .*= 1.001
     end
     return nothing
 end
