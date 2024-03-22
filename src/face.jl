@@ -2,10 +2,17 @@
 """
 Struct for interfaces and boundary faces of cells.
 """
-mutable struct Face{N, T, Cell}
+mutable struct Face{Dim, T, Cell}
+    "Face orientation."
     dir::Int
-    boundary::HyperRectangle{N, T}
+    "Geometric information for the face."
+    boundary::HyperRectangle{Dim, T}
+    "Adjacent cell(s)."
     cell::SVector{2,Union{Cell, Nothing}}
+    "If false, cell is not cut; may or may not be cut otherwise."
+    cut::Bool
+    "If true, cell is not cut and its center is immersed."
+    immersed::Bool 
 end
 
 """
@@ -14,11 +21,13 @@ end
 Construct a face with normal direction index `dir`, with corner at `origin`, 
 and having `widths` dimensions. 
 """
-function Face(dir::Int, origin::SVector{N, T}, widths::SVector{N, T}, 
+function Face(dir::Int, origin::SVector{Dim, T}, widths::SVector{Dim, T}, 
               left::Union{Cell,Nothing}=nothing,
-              right::Union{Cell,Nothing}=nothing) where {N, T, Cell}
+              right::Union{Cell,Nothing}=nothing) where {Dim, T, Cell}
     @assert( abs(widths[abs(dir)]) < eps(T) )
-    Face(dir, HyperRectangle(origin, widths), SVector{2,Union{Cell, Nothing}}(left, right))
+    Face(dir, HyperRectangle(origin, widths),
+         SVector{2,Union{Cell, Nothing}}(left, right),
+         false, false)
 end
 
 """
@@ -63,6 +72,26 @@ function build_boundary_face(dir::Int, cell::Cell{Data, Dim, T, L}
 end
 
 show(io::IO, face::Face) = print(io, "Face: dir = $(face.dir) $(cell.boundary)")
+
+
+"""
+    cut = is_cut(face)
+
+Returns `false` if `face` is not cut; note that a return of `true`, however, 
+only indicates that the face *may* be cut.
+"""
+function is_cut(face::Face{Dim, T, Cell}) where {Dim, T, Cell}
+    return face.cut
+end
+
+"""
+    im = is_immersed(face)
+
+Returns `true` if face is not cut and its center is immersed.
+"""
+function is_immersed(face::Face{Dim, T, Cell}) where {Dim, T, Cell}
+    return face.immersed
+end
 
 """
     I = indices_within_parent(cell)
@@ -215,4 +244,20 @@ function build_boundary_faces(root::Cell{Data, Dim, T, L}) where {Data,Dim,T,L}
         end
     end
     return face_list
+end
+
+"""
+    mark_cut_faces!(faces, levset)
+
+Identifies faces in the list `faces` that _may be_ cut be the level-set levset.
+"""
+function mark_cut_faces!(faces, levset::LevelSet{Dim,T}) where {Dim, T}
+    for face in faces
+        face.cut = is_cut(face.boundary, levset)
+        if !face.cut && is_center_immersed(face.boundary, levset)
+            # This face is definitely not cut, and its center is immersed, so 
+            # entire face must be immersed.
+            face.immersed = true
+        end
+    end
 end

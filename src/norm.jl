@@ -1,61 +1,6 @@
 # Routines related to constructing a diagonal norm
 
 """
-    solve_min_norm!(w, V, b)
-
-Finds the minimum norm solution to `transpose(V) w = b`.
-"""
-function solve_min_norm!(w, V, b)
-    F = qr(V)
-    Q = Matrix(F.Q) # If using Q directly, restrict to first length(b) cols 
-    w .= Q * (F.R' \ b)
-    return nothing
-end
-
-"""
-    solve_min_norm_diff!(w, dw, V, dV, b)
-
-Forward mode of `solve_min_norm!` treating `b` as constant.  This is useful
-for verifying the reverse mode implementation.
-"""
-function solve_min_norm_diff!(w, dw, V, dV, b)
-    F = qr(V)
-    Q = Matrix(F.Q)
-    Rb = F.R' \ b
-    w .= Q * Rb
-    QdV = Q'*dV
-    QdVR = QdV / F.R 
-    X = tril(QdVR,-1)
-    X = X - X'
-    dQ = Q*X + dV / F.R - Q*QdVR
-    dR = QdV - X*F.R
-    dw .= dQ * Rb - Q * (F.R' \ (dR' * Rb) )
-    return nothing 
-end 
-
-"""
-    solve_min_norm_rev!(V_bar, w_bar, V, b)
-
-Reverse mode of `solve_min_norm!`.  On entry, `w_bar` holds the derivatives of
-the objective w.r.t. the weights.  On exit, `V_bar` holds the derivatives of the
-objective w.r.t. the matrix `V`.
-"""
-function solve_min_norm_rev!(V_bar, w_bar, V, b)
-    F = qr(V)
-    Q = Matrix(F.Q)
-    Rtb = F.R' \ b
-    # w .= Q * Rtb 
-    Q_bar = w_bar * Rtb'
-    Rtb_bar = Q' * w_bar
-    # Rtb = Rt \ b    
-    R_bar = -(F.R \ Rtb_bar * Rtb')'
-    M = R_bar*F.R' - Q'*Q_bar
-    M = triu(M) + transpose(triu(M,1))
-    V_bar .= (Q_bar + Q * M) / F.R'
-    return nothing
-end
-
-"""
     m = calc_moments!(root, levset, degree)
 
 Returns the first total `degree` integral moments for all cells in the tree
@@ -84,14 +29,12 @@ function calc_moments!(root::Cell{Data, Dim, T, L}, levset, degree
 
     # set up the level-set function for passing to calc_cut_quad below
     mod_levset[] = levset
-    #safe_clevset = @safe_cfunction( 
-    #    x -> evallevelset(x, mod_levset[]), Cdouble, (Vector{Float64},))
     safe_clevset = @safe_cfunction( x -> mod_levset[](x), Float64, (Vector{Float64},))
 
     for (c, cell) in enumerate(allleaves(root))
-        xavg = cell.data.xref #view(cell_xavg, :, c)
-        dx = cell.data.dx #view(cell_dx, :, c)
-        if cell.data.immersed
+        xref = cell.data.xref 
+        dx = cell.data.dx 
+        if is_immersed(cell)
             # do not integrate cells that have been confirmed immersed
             continue
         elseif is_cut(cell)
@@ -100,7 +43,7 @@ function calc_moments!(root::Cell{Data, Dim, T, L}, levset, degree
                 cell.boundary, safe_clevset, degree+1, fit_degree=degree)
             # consider resizing 1D arrays here, if need larger
             for I in CartesianIndices(xq_cut)
-                xq_cut[I] = (xq_cut[I] - xavg[I[1]])/dx[I[1]] - 0.5
+                xq_cut[I] = (xq_cut[I] - xref[I[1]])/dx[I[1]] - 0.5
             end
             Vq_cut = zeros(length(wq_cut), num_basis)
             workq_cut = zeros((Dim+1)*length(wq_cut))
@@ -114,7 +57,7 @@ function calc_moments!(root::Cell{Data, Dim, T, L}, levset, degree
             # Precompute?
             quadrature!(xq, wq, cell.boundary, x1d, w1d)
             for I in CartesianIndices(xq)
-                xq[I] = (xq[I] - xavg[I[1]])/dx[I[1]] - 0.5
+                xq[I] = (xq[I] - xref[I[1]])/dx[I[1]] - 0.5
             end
             poly_basis!(Vq, degree, xq, workq, Val(Dim))
             for i = 1:num_basis
@@ -224,17 +167,17 @@ function cell_quadrature(degree, xc::AbstractArray{ComplexF64,2}, xq, wq,
 end
 
 """
-    w = cell_quadrature(degree, xc, moments, xavg, dx, Val(Dim))
+    w = cell_quadrature(degree, xc, moments, xref, dx, Val(Dim))
 
 Given a set of total `degree` polynomial `moments`, computes a quadrature that
-is exact for those moments based on the nodes `xc`.  The arrays `xavg` and `dx`
+is exact for those moments based on the nodes `xc`.  The arrays `xref` and `dx`
 are used to shift and scale, respectively, the nodes in `xc` to improve 
 conditioning of the Vandermonde matrix.  The same scaling and shifts must have
 been applied when computing the integral `moments`.
 """
-function cell_quadrature(degree, xc, moments, xavg, dx, ::Val{Dim}) where {Dim}
-    @assert( size(xc,1) == length(dx) == length(xavg) == Dim,
-             "xc/dx/xavg/Dim are inconsistent")
+function cell_quadrature(degree, xc, moments, xref, dx, ::Val{Dim}) where {Dim}
+    @assert( size(xc,1) == length(dx) == length(xref) == Dim,
+             "xc/dx/xref/Dim are inconsistent")
     num_basis = binomial(Dim + degree, Dim)
     @assert( length(moments) >= num_basis, "moments has inconsistent size")
     num_nodes = size(xc, 2)
@@ -242,7 +185,7 @@ function cell_quadrature(degree, xc, moments, xavg, dx, ::Val{Dim}) where {Dim}
     # apply an affine transformation to the points xc
     xc_trans = zero(xc)
     for I in CartesianIndices(xc)
-        xc_trans[I] = (xc[I] - xavg[I[1]])/dx[I[1]] - 0.5
+        xc_trans[I] = (xc[I] - xref[I[1]])/dx[I[1]] - 0.5
     end
     # evaluate the polynomial basis at the node points 
     workc = zeros(eltype(xc), (Dim+1)*num_nodes)
@@ -254,10 +197,10 @@ function cell_quadrature(degree, xc, moments, xavg, dx, ::Val{Dim}) where {Dim}
     return w
 end
 
-function cell_quadrature(degree, xc::AbstractArray{ComplexF64,2}, moments, xavg,
+function cell_quadrature(degree, xc::AbstractArray{ComplexF64,2}, moments, xref,
                          dx, ::Val{Dim}) where {Dim}
-    @assert( size(xc,1) == length(dx) == length(xavg) == Dim,
-             "xc/dx/xavg/Dim are inconsistent")
+    @assert( size(xc,1) == length(dx) == length(xref) == Dim,
+             "xc/dx/xref/Dim are inconsistent")
     num_basis = binomial(Dim + degree, Dim)
     @assert( length(moments) >= num_basis, "moments has inconsistent size")
     num_nodes = size(xc, 2)
@@ -265,7 +208,7 @@ function cell_quadrature(degree, xc::AbstractArray{ComplexF64,2}, moments, xavg,
     # apply an affine transformation to the points xc
     xc_trans = zero(xc)
     for I in CartesianIndices(xc)
-        xc_trans[I] = (xc[I] - xavg[I[1]])/dx[I[1]] - 0.5
+        xc_trans[I] = (xc[I] - xref[I[1]])/dx[I[1]] - 0.5
     end
     # evaluate the polynomial basis at the node points 
     workc = zeros(eltype(xc), (Dim+1)*num_nodes)
@@ -298,16 +241,16 @@ function cell_quadrature_rev!(xc_bar, degree, xc, xq, wq, w_bar, ::Val{Dim}
     lower = minimum([real.(xc) real.(xq)], dims=2)
     upper = maximum([real.(xc) real.(xq)], dims=2)
     dx = upper - lower 
-    xavg = 0.5*(upper + lower)
-    #xavg .*= 0.0
+    xref = 0.5*(upper + lower)
+    #xref .*= 0.0
     dx[:] .*= 1.001
     xc_trans = zero(xc)
     for I in CartesianIndices(xc)
-        xc_trans[I] = (xc[I] - xavg[I[1]])/dx[I[1]] - 0.5
+        xc_trans[I] = (xc[I] - xref[I[1]])/dx[I[1]] - 0.5
     end
     xq_trans = zero(xq)
     for I in CartesianIndices(xq)
-        xq_trans[I] = (xq[I] - xavg[I[1]])/dx[I[1]] - 0.5
+        xq_trans[I] = (xq[I] - xref[I[1]])/dx[I[1]] - 0.5
     end
     # evaluate the polynomial basis at the quadrature and node points 
     workc = zeros((Dim+1)*num_nodes)
@@ -334,17 +277,17 @@ function cell_quadrature_rev!(xc_bar, degree, xc, xq, wq, w_bar, ::Val{Dim}
 end
 
 """
-    cell_quadrature_rev!(xc_bar, degree, xc, moments, xavg, dx, w_bar, Val(Dim))
+    cell_quadrature_rev!(xc_bar, degree, xc, moments, xref, dx, w_bar, Val(Dim))
 
 Reverse mode differentiated of the moment-based variant of `cell_quadrature`.
 Returns the derivatives of `dot(w, w_bar)` with respect to `xc` in the array
 `xc_bar`.  All other inputs are the same as the moment-based variant of
 `cell_quadrature`.
 """
-function cell_quadrature_rev!(xc_bar, degree, xc, moments, xavg, dx, w_bar,
+function cell_quadrature_rev!(xc_bar, degree, xc, moments, xref, dx, w_bar,
                               ::Val{Dim}) where {Dim}
-    @assert( size(xc,1) == size(xc_bar,1) == length(dx) == length(xavg) == Dim,
-             "xc/xc_bar/dx/xavg/Dim are inconsistent")
+    @assert( size(xc,1) == size(xc_bar,1) == length(dx) == length(xref) == Dim,
+             "xc/xc_bar/dx/xref/Dim are inconsistent")
     num_basis = binomial(Dim + degree, Dim)
     @assert( length(moments) >= num_basis, "moments has inconsistent size")
     num_nodes = size(xc, 2)
@@ -352,7 +295,7 @@ function cell_quadrature_rev!(xc_bar, degree, xc, moments, xavg, dx, w_bar,
     # apply an affine transformation to the points xc
     xc_trans = zero(xc)
     for I in CartesianIndices(xc)
-        xc_trans[I] = (xc[I] - xavg[I[1]])/dx[I[1]] - 0.5
+        xc_trans[I] = (xc[I] - xref[I[1]])/dx[I[1]] - 0.5
     end
     # evaluate the polynomial basis at the node points 
     workc = zeros(eltype(xc), (Dim+1)*num_nodes)
@@ -623,31 +566,24 @@ function penalty(root::Cell{Data, Dim, T, L}, xc, xc_init, dist_ref, H_tol,
         end 
         phi += 0.5*mu*dist/(dist_ref[i]^2)
     end
-
-    # compute the diagonal norm based on x
+    # compute the diagonal norm based on x...
     H = zeros(eltype(xc), num_nodes)
     diagonal_norm!(H, root, xc, degree)
-
-    # # compute the discrete KS function
-    # rho = 100.0
-    # minH = minimum(real.(H))     
-    # sum_exp = 0.0
-    # for i = 1:num_nodes 
-    #     sum_exp += exp(rho*(minH - H[i]))
-    # end 
-    # phi += -minH + log(sum_exp/num_nodes)/rho
-
-    # add the penalties
+    # and add the penalties
     for i = 1:num_nodes
         if real(H[i]) < H_tol[i]
             phi += 0.5*(H[i]/H_tol[i] - 1)^2
         end 
     end
-
     return phi
 end
 
+"""
+    penalty_grad!(g, root, xc, xc_init, dist_ref, H_tol, mu, degree)
 
+Computes the derivative of `penalty` with respect to `xc`.  See `penalty` for
+and explanation of the remaining parameters.
+"""
 function penalty_grad!(g::AbstractVector{T}, root::Cell{Data, Dim, T, L}, 
                        xc, xc_init, dist_ref, H_tol, mu, degree
                        )  where {Data, Dim, T, L}
@@ -655,31 +591,11 @@ function penalty_grad!(g::AbstractVector{T}, root::Cell{Data, Dim, T, L},
     # need the diagonal norm for the reverse sweep 
     H = zeros(eltype(xc), num_nodes)
     diagonal_norm!(H, root, xc, degree)
-
-    # rho = 100.0
-    # minH = minimum(real.(H))
-    # sum_exp = 0.0
-    # for i = 1:num_nodes 
-    #     sum_exp += exp(rho*(minH - H[i]))
-    # end 
-
     # start the reverse sweep 
     fill!(g, zero(T))
 
-    # return phi
-    # phi *= 0.5 
-    # phi_bar = 0.5 
-
     # return phi 
     phi_bar = 1.0 
-
-    # # phi += -minH + log(sum_exp/num_nodes)/rho
-    # sum_exp_bar = phi_bar/(sum_exp * rho)
-    # H_bar = zero(H)
-    # for i = 1:num_nodes 
-    #     # sum_exp += exp(rho*(minH - H[i]))
-    #     H_bar[i] -= sum_exp_bar*exp(rho*(minH - H[i]))*rho
-    # end
 
     # add the penalties    
     H_bar = zero(H)
@@ -807,9 +723,6 @@ function apply_approx_inverse!(p::AbstractVector{T}, g::AbstractVector{T},
 
     # construct the Jacobian for the smallest norms 
     H_Jac = zeros(Dim, num_nodes, length(small_H))
-    #x1d, w1d = lg_nodes(degree+1) # could also use lgl_nodes                   
-    #wq = zeros(length(w1d)^Dim)
-    #xq = zeros(Dim, length(wq))
     for cell in allleaves(root)
         if is_immersed(cell)
             continue
@@ -824,7 +737,6 @@ function apply_approx_inverse!(p::AbstractVector{T}, g::AbstractVector{T},
         #println("cell_set = ",cell_set)
         # get the nodes in this cell's stencil, and an accurate quaduature
         nodes = view(xc, :, cell.data.points)
-        #quadrature!(xq, wq, cell.boundary, x1d, w1d)
         # loop over the nodes in cell_set 
         w_bar = zeros(length(cell.data.points))
         for i = 1:length(cell_set)
@@ -852,7 +764,17 @@ function apply_approx_inverse!(p::AbstractVector{T}, g::AbstractVector{T},
     return nothing
 end
 
+"""
+    H = opt_norm!(root, xc, degree, H_tol, mu, dist_ref, max_rank)
 
+Finds an approximate minimizer for the objective `penalty` with respect to the
+node coordinates `xc` and based on the background mesh `root`.  Once an
+approximate solution is found, the corresponding `H` norm is returned; note 
+that the `xc` coordinates are altered in the process.  The parameter `max_rank`
+determines the rank of the approximate Jacobian of the norm with respective to 
+the nodes, and this approximate Jacobian is used to form an approximate inverse
+Hessian.  See `penalty` for explanations of the other parameters.
+"""
 function opt_norm!(root::Cell{Data, Dim, T, L}, xc, degree, H_tol, mu, dist_ref,
                    max_rank) where {Data, Dim, T, L}
     num_nodes = size(xc, 2)

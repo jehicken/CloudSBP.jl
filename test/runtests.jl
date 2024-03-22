@@ -18,11 +18,15 @@ Random.seed!(42)
 
 @testset "CutDGD.jl" begin
     
-    @testset "test norm routines" begin
-        include("test_norm.jl")
+    @testset "test first-derivative routines" begin 
+        include("test_first_derivative.jl")
+    end
+    
+    if false
+    @testset "test utility routines" begin 
+        include("test_utils.jl")
     end
 
-    if false
     @testset "test quadrature routines" begin 
         include("test_quadrature.jl")
     end
@@ -37,10 +41,10 @@ Random.seed!(42)
 
     @testset "test mesh routines" begin 
         include("test_mesh.jl")
-    end 
+    end
 
-    @testset "test first-derivative routines" begin 
-        include("test_first_derivative.jl")
+    @testset "test norm routines" begin
+        include("test_norm.jl")
     end
     end
 

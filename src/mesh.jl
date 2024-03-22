@@ -218,30 +218,10 @@ well-conditioned Vandermonde matrix of total degree `degree`.
 """
 function build_nn_stencils!(root, points, degree)
     kdtree = KDTree(points, leafsize = 10)
-    # find the necessary nearest neighbors
     Dim = size(points,1)
-    max_stencil_iter = degree
+    max_stencil_iter = degree + 1
     sortres = true
     tol = 5.0
-    # for leaf in allleaves(root)
-    #     # the `degree^2` below was found using experiments on uniform grids
-    #     num_nbr = binomial(dim + degree, dim) # + degree #+ degree^2 # + degree
-    #     #num_nbr = (degree+1)^dim
-    #     xc = center(leaf)
-    #     indices, dists = knn(kdtree, xc, num_nbr, sortres)
-    #     #println(indices)
-    #     #println(dists)
-    #     #V = calcVandermonde(xc, view(points, :, indices), degree) 
-    #     leaf.data.points = indices
-    #     # for k = 1:max_stencil_iter
-    #     #     indices, dists = knn(tree, points, num_nbr, sortres = true)
-    #     #     # build the Vandermonde matrix and check its condition number
-    #     #     V = calcVandermonde(xc, view(points, :, indices), degree)
-    #     #     if cond(V) < tol*exp(degree)
-    #     #         break
-    #     #     end 
-    #     # end
-    # end
     for leaf in allleaves(root)
         xc = center(leaf)
         num_basis = binomial(Dim + degree, Dim)
