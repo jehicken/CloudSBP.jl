@@ -1,3 +1,5 @@
+# Structures and methods associated with the `RegionTree` mesh.  Note that 
+# `leaf` and `cell` are used interchangably throughout the code.
 
 """
 Data associated with a RegionTree `Cell`.
@@ -269,4 +271,18 @@ function set_xref_and_dx!(root, points)
         leaf.data.dx[:] .*= 1.001
     end
     return nothing
+end
+
+"""
+    max_stencil = max_leaf_stencil(root)
+
+Returns the largest stencil (i.e. number of points used for DGD basis) over all 
+leaves in the mesh defined by `root`.
+"""
+function max_leaf_stencil(root)
+    max_stencil = 0
+    for leaf in allleaves(root)
+        max_stencil = max(max_stencil, length(cell.data.points))
+    end
+    return max_stencil
 end
