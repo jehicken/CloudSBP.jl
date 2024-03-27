@@ -83,6 +83,7 @@ tet_vol = 2^Dim/factorial(Dim)
 vol *= sqrt(tet_vol)
 println("vol = ",vol)
 
+
 # get reference distance 
 #kdtree = KDTree(points, leafsize = 10)
 #dist_ref = zeros(num_nodes)
@@ -110,6 +111,26 @@ points_init = copy(points)
 H = CutDGD.opt_norm!(root, points, degree, H_tol, mu, dist_ref, max_rank)
 
 println("minimum(H) = ",minimum(H))
+
+# How many local weights are negative?
+count = 0
+for cell in allleaves(root)
+    if CutDGD.is_immersed(cell)
+        continue
+    end
+    # get the nodes in this cell's stencil
+    nodes = view(points, :, cell.data.points)
+    # get cell quadrature and add to global norm
+    w = CutDGD.cell_quadrature(degree, nodes, cell.data.moments, cell.data.xref,
+                        cell.data.dx, Val(Dim))
+    if minimum(w) < 0.0
+        global count += 1
+    end
+end
+println("Number of cells with negative norm: ",count)
+println("Percentage of cells: ",100*count/CutDGD.num_leaves(root)," %")
+
+
 
 using PyPlot
 
