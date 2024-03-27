@@ -1,10 +1,10 @@
 """
-    M = mass_matrix(root, points, degree)
+    M = mass_matrix(root, xc, degree)
 
 Returns the DGD mass matrix for degree `degree` based on the mesh in the tree 
-`root` and the centers in `points`.
+`root` and the centers in `xc`.
 """
-function mass_matrix(root::Cell{Data, Dim, T, L}, points, degree
+function mass_matrix(root::Cell{Data, Dim, T, L}, xc, degree
                      ) where {Data, Dim, T, L}
     rows = zeros(Int, (0))
     cols = zeros(Int, (0))                        
@@ -21,7 +21,7 @@ function mass_matrix(root::Cell{Data, Dim, T, L}, points, degree
         # get the Gauss points on cell
         quadrature!(xq, wq, cell.boundary, x1d, w1d)
         # phi[:,:,:] holds the DGD basis at xq 
-        dgd_basis!(phi, degree, view(points, :, cell.data.points), xq, work,
+        dgd_basis!(phi, degree, view(xc, :, cell.data.points), xq, work,
                    Val(Dim))
         num_basis = length(cell.data.points)
         fill!(Melem, zero(T))
@@ -51,15 +51,15 @@ function mass_matrix(root::Cell{Data, Dim, T, L}, points, degree
 end
 
 """
-    mass_row_sums!(lumped_mass, root, points, degree)
+    mass_row_sums!(lumped_mass, root, xc, degree)
 
 Fills the array `lumped_mass` with the sum of the rows (or columns) of the 
-symmetric DGD mass matrix of degree `degree` based on the cloud `points`.
+symmetric DGD mass matrix of degree `degree` based on the cloud `xc`.
 """
-function mass_row_sums!(lumped_mass, root::Cell{Data, Dim, T, L}, points, degree
+function mass_row_sums!(lumped_mass, root::Cell{Data, Dim, T, L}, xc, degree
                         ) where {Data, Dim, T, L}
-    @assert( length(lumped_mass == size(points,2),
-            "lumped_mass inconsistent with points" )
+    @assert( length(lumped_mass == size(xc,2),
+            "lumped_mass inconsistent with xc" )
     fill!(lumped_mass, zero(eltype(lumped_mass)))
     # find the maximum number of phi basis over all cells
     max_basis = max_leaf_stencil(root)
@@ -72,7 +72,7 @@ function mass_row_sums!(lumped_mass, root::Cell{Data, Dim, T, L}, points, degree
         # get the Gauss points on cell
         quadrature!(xq, wq, cell.boundary, x1d, w1d)
         # phi[:,:,:] holds the DGD basis at xq 
-        dgd_basis!(phi, degree, view(points, :, cell.data.points), xq, work,
+        dgd_basis!(phi, degree, view(xc, :, cell.data.points), xq, work,
                    Val(Dim))
         num_basis = length(cell.data.points)
         fill!(Melem, zero(T))
@@ -87,37 +87,81 @@ function mass_row_sums!(lumped_mass, root::Cell{Data, Dim, T, L}, points, degree
 end
 
 """
-    obj = mass_matrix_obj(root, xc, xc_init, dist_ref, D_tol, mu, degree)
+    obj = mass_obj(root, xc, xc_init, dist_ref, H_tol, mu, degree)
 
 Compute the objective that seeks to minimize the change in the node locations
 while ensuring a positive lumped mass matrix.  `root` is the mesh, `xc` are the 
 nodes being varied, and `xc_init` are the initial node locations. `dist_ref` are
-reference lengths, and `D_tol` is an array of tolerances for the lumped mass 
-value at each node; that is, `sum_{j} M[i,j] >= D_tol[i]` for the constraint to 
+reference lengths, and `H_tol` is an array of tolerances for the lumped mass 
+value at each node; that is, `sum_{j} M[i,j] >= H_tol[i]` for the constraint to 
 be satisfied.  Finally, `mu` scales the regularization term, and `degree` is 
 the target exactness of the rule.
 """
-function mass_matrix_obj(root::Cell{Data, Dim, T, L}, points, points_init, 
-                         dist_ref, D_tol, mu, degree)  where {Data, Dim, T, L})
+function mass_obj(root::Cell{Data, Dim, T, L}, xc, points_init, dist_ref, 
+                  H_tol, mu, degree)  where {Data, Dim, T, L})
     num_nodes = size(xc, 2)
     # compute the penalty based on change from points_init
     phi = 0.0
     for i = 1:num_nodes 
         dist = 0.0
         for d = 1:Dim 
-            dist += (points[d,i] - points_init[d,i])^2
+            dist += (xc[d,i] - points_init[d,i])^2
         end 
         phi += 0.5*mu*dist/(dist_ref[i]^2)
     end
-    # compute the lumped mass matrix based on points 
-    H = zeros(eltype(points), num_nodes)
-    mass_row_sums!(H, root, points, degree)
+    # compute the lumped mass matrix based on xc 
+    H = zeros(eltype(xc), num_nodes)
+    mass_row_sums!(H, root, xc, degree)
         # and add the penalties
     for i = 1:num_nodes
-        if real(H[i]) < D_tol[i]
-            phi += 0.5*(H[i]/D_tol[i] - 1)^2
+        if real(H[i]) < H_tol[i]
+            phi += 0.5*(H[i]/H_tol[i] - 1)^2
         end 
     end
     return phi
 end
 
+"""
+    mass_obj_grad!(g, root, xc, xc_init, dist_ref, H_tol, mu, degree)
+
+Computes the derivative of `mass_obj` with respect to `xc`.  See `mass_obj` for
+and explanation of the remaining parameters.
+"""
+function mass_obj_grad!(g::AbstractVector{T}, root::Cell{Data, Dim, T, L}, 
+                       xc, xc_init, dist_ref, H_tol, mu, degree
+                       )  where {Data, Dim, T, L}
+    num_nodes = size(xc, 2)
+    # need the lumped mass for the reverse sweep 
+    H = zeros(eltype(xc), num_nodes)
+    mass_row_sums!(H, root, xc, degree)
+    # start the reverse sweep 
+    fill!(g, zero(T))
+
+    # return phi 
+    phi_bar = 1.0 
+
+    # add the penalties
+    H_bar = zero(H)
+    for i = 1:num_nodes
+        if real(H[i]) < H_tol[i]
+            # phi += 0.5*(H[i]/H_tol[i] - 1)^2
+            H_bar[i] += phi_bar*(H[i]/H_tol[i] - 1)/H_tol[i]
+        end
+    end
+
+    # compute the lumped mass matrix based on xc 
+    # mass_row_sums!(H, root, xc, degree)
+    xc_bar = reshape(g, size(xc))
+    mass_row_sums_rev!(xc_bar, H_bar, root, xc, degree)
+
+    # compute the norm part of the penalty
+    for i = 1:num_nodes 
+        # phi += 0.5*mu*dist/(dist_ref[i]^2)
+        dist_bar = 0.5*mu*phi_bar/(dist_ref[i]^2)
+        for d = 1:Dim
+            # dist += (xc[d,i] - xc_init[d,i])^2
+            xc_bar[d,i] += dist_bar*2.0*(xc[d,i] - xc_init[d,i])
+        end
+    end
+    return nothing
+end 
