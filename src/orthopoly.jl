@@ -458,6 +458,60 @@ function monomial_basis!(V::AbstractArray{T,2}, degree::Int,
 end
 
 """
+    monomial_basis_derivatives!(dV, degree, x, Val(N))
+
+This method and its variants compute the first derivatives of monomial basis 
+of total degree `degree` at the points `x`.  The type parameter `N` is used to 
+select the appropriate spatial dimension.
+"""
+function monomial_basis_derivatives!(dV::AbstractArray{T,3}, degree::Int, 
+                                     x::AbstractArray{T,2}, ::Val{1}) where {T}
+    @assert( size(dV,1) == size(x,2) && size(dV,2) == degree+1 && 
+             size(dV,3) == 1)
+    for i = 0:degree 
+        dV[:,i+1,1] = i*x[1,:].^max(0,i-1)
+    end
+    return nothing
+end
+
+function monomial_basis_derivatives!(dV::AbstractArray{T,3}, degree::Int, 
+                                     x::AbstractArray{T,2}, ::Val{2}) where {T}
+    @assert( size(dV,1) == size(x,2) && size(dV,2) == binomial(2 + degree, 2) &&
+             size(dV,3) == 2)
+    ptr = 1
+    for r = 0:degree
+        for j = 0:r 
+            i = r - j
+            # V[:,ptr] = (x[1,:].^i).*(x[2,:].^j)
+            dV[:,ptr,1] = i*(x[1,:].^max(i-1,0)).*(x[2,:].^j)
+            dV[:,ptr,2] = j*(x[1,:].^i).*(x[2,:].^max(j-1,0))
+            ptr += 1
+        end
+    end
+    return nothing
+end
+
+function monomial_basis_derivatives!(dV::AbstractArray{T,3}, degree::Int, 
+                                     x::AbstractArray{T,2}, ::Val{3}) where {T}
+    @assert( size(dV,1) == size(x,2) && size(dV,2) == binomial(3 + degree, 3) &&
+             size(dV,3) == 3)
+    ptr = 1
+    for r = 0:degree
+        for k = 0:r
+            for j = 0:r-k
+                i = r - j - k
+                # V[:,ptr] = (x[1,:].^i).*(x[2,:].^j).*(x[3,:].^k)
+                dV[:,ptr,1] = i*(x[1,:].^max(i-1,0)).*(x[2,:].^j).*(x[3,:].^k)
+                dV[:,ptr,2] = j*(x[1,:].^i).*(x[2,:].^max(j-1,0)).*(x[3,:].^k)
+                dV[:,ptr,3] = k*(x[1,:].^i).*(x[2,:].^j).*(x[3,:].^max(k-1,0))
+                ptr += 1
+            end 
+        end
+    end
+    return nothing
+end
+
+"""
     tensor_basis!(V, degree, x, Val(N))
 
 This method computes the tensor-product basis of degree `degree` at the points 

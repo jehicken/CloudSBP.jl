@@ -26,6 +26,7 @@ get_complex_step(::Type{T}) where {T <: ComplexF64} = 1e-60
 # this is needed for the @safe_cfunction macro
 const mod_levset = Ref{Any}()
 
+include("utils.jl")
 include("orthopoly.jl")
 include("face.jl")
 include("mesh.jl")

@@ -6,24 +6,151 @@ Summation-by-parts first derivative operator
 `S[d]` holds the skew-symmetric part for direction `d`
 `E[b,d]` holds the symmetric part for boundary `b` and direction `d`
 """
-mutable struct FirstDeriv{T, Dim}
+mutable struct SBP{T,Dim} #FirstDeriv{T, Dim}
     S::SVector{Dim, SparseMatrixCSC{T, Int64}}    
-    E::Matrix{SparseMatrixCSC{T, Int64}}
-    #bnd_pts::Array{Matrix{T}}
-    #bnd_nrm::Array{Matrix{T}}
-    #bnd_dof::Array{Vector{Int}}
-    #bnd_prj::Array{Matrix{T}}
+    #E::Matrix{SparseMatrixCSC{T, Int64}}
+    bnd_pts::Array{Matrix{T}}
+    bnd_nrm::Array{Matrix{T}}
+    bnd_dof::Array{Vector{Int}}
+    bnd_prj::Array{Matrix{T}}
 end
 
-function build_first_deriv(root::Cell{Data, Dim, T, L}, levset::LevelSet{Dim,T},
-                           points, degree) where {Data, Dim, T, L}
 
-    # Step 1: refine based on points (and levset?)
+"""
+    rect = build_cell_face(dir, cell)
 
-    # Step 2: mark cut cells and cut faces 
-    mark_cut_cells!(root, levset)
+Construct a `HyperRectangle` for given cell on side `dir`.
+"""
+function cell_side_rect(dir, cell::Cell{Data, Dim, T, L}) where {Data, Dim, T, L}
+    if dir > 0 
+        origin = SVector(
+            ntuple(i -> i == dir ? 
+                   cell.boundary.origin[i] + cell.boundary.widths[i] :
+                   cell.boundary.origin[i], Dim))
+    else 
+        origin = SVector(cell.boundary.origin)
+    end
+    widths = SVector(
+        ntuple(i -> i == abs(dir) ? 0.0 : cell.boundary.widths[i], Dim))
+    return HyperRectangle(origin, widths)
+end
 
-    # Step 3: set up arrays to store sparse matrix information
+"""
+    E = cell_symmetric_part(cell, xc, degree)
+
+Returns the symmetric part of the first-derivative SBP operator for the uncut 
+cell `cell`.  The point cloud associated with `cell` is `xc`, and the boundary 
+operator is `2*degree` exact for boundary integrals.
+
+**Note**: This version recomputes the 1D quadrature rule each time, and involves
+several allocations.
+"""
+function cell_symmetric_part(cell::Cell{Data, Dim, T, L}, xc, degree
+                             ) where {Data, Dim, T, L}
+    @assert( length(cell.data.dx) > 0, "cell.data.dx is empty")
+    @assert( length(cell.data.xref) > 0, "cell.data.xref is empty")
+    num_nodes = size(xc,2)
+    x1d, w1d = lg_nodes(degree+1) # could also use lgl_nodes
+    wq_face = zeros(length(w1d)^(Dim-1))
+    xq_face = zeros(Dim, length(wq_face))
+    interp = zeros(length(wq_face), num_nodes)
+    xref = cell.data.xref 
+    dx = cell.data.dx
+    E = zeros(num_nodes, num_nodes, Dim)
+    for dir in ntuple(i -> i % 2 == 1 ? -div(i+1,2) : div(i,2), 2*Dim)
+        rect = cell_side_rect(dir, cell)
+        face_quadrature!(xq_face, wq_face, rect, x1d, w1d, abs(dir))
+        build_interpolation!(interp, degree, xc, xq_face, xref, dx)
+        for i in axes(interp,2)
+            for j in axes(interp,2)
+                for q in axes(interp,1)
+                    E[i,j,abs(dir)] += interp[q,i] * wq_face[q] * interp[q,j] * sign(dir)
+                end
+            end
+        end
+    end
+    return E
+end
+
+"""
+    S = cell_skew_part(cell, xc, degree, H, E)
+
+Returns the skew-symmetric parts of SBP diagonal-norm operators for the element
+`cell` based on the nodes `xc`.  The operator is exact for polynomials of total 
+degree `degree`.  The diagonal norm for the cell is provided in the array `H`, 
+which must be exact for degree `2*degree - 1` polynomials over `xc`.  Finally,
+the symmetric part of the SBP operators must be provided in `E`.  Note that `E`
+and the returned `S` are three dimensional arrays, with `E[:,:,d]` and
+`S[:,:,d]` holding the operators for the direction `d`.
+"""
+function cell_skew_part(cell::Cell{Data, Dim, T, L}, xc, degree, H, E
+                        ) where {Data, Dim, T, L}
+
+    num_basis = binomial(Dim + degree, Dim)
+    num_nodes = size(xc,2)
+
+    xref = cell.data.xref 
+    dx = cell.data.dx
+    xc_trans = zero(xc)
+    for I in CartesianIndices(xc)
+        xc_trans[I] = (xc[I] - xref[I[1]])/dx[I[1]] - 0.5
+    end
+
+    V = zeros(num_nodes, num_basis)
+    dV = zeros(num_nodes, num_basis, Dim)
+    workc = zeros((Dim+1)*num_nodes)
+    poly_basis!(V, degree, xc_trans, workc, Val(Dim))
+    poly_basis_derivatives!(dV, degree, xc_trans, Val(Dim))
+
+    # construct the linear system that the skew matrices must satisfy 
+    num_skew_vars = div(num_nodes*(num_nodes-1),2)
+    num_eqns = num_nodes*num_basis
+    A = zeros(num_eqns, num_skew_vars)
+    B = zeros(num_eqns, Dim)
+    ptr = 0
+    for k = 1:num_basis
+        for row = 2:num_nodes 
+            offset = div((row-1)*(row-2),2)
+            for col = 1:row-1
+                A[ptr+row,offset+col] += V[col,k]
+                A[ptr+col,offset+col] -= V[row,k]
+            end 
+        end
+        for d = 1:Dim
+            # the factor of 1/dx[d] accounts for the transformation above
+            B[ptr+1:ptr+num_nodes,d] = diagm(H)*dV[:,k,d]/dx[d] - 0.5*E[:,:,d]*V[:,k]
+        end
+        ptr += num_nodes
+    end
+    S = zeros(num_nodes, num_nodes, Dim)
+    vals = zeros(num_skew_vars)
+    for d = 1:Dim
+        solve_min_norm!(vals, A', vec(B[:,d]))
+        for row = 2:num_nodes 
+            offset = div((row-1)*(row-2),2)
+            for col = 1:row-1
+                S[row,col,d] += vals[offset+col]
+                S[col,row,d] -= vals[offset+col]
+            end
+        end
+    end
+    return S
+end
+
+
+function build_first_deriv(root::Cell{Data, Dim, T, L}, ifaces, xc, levset, degree
+                           ) where {Data, Dim, T, L}
+    num_nodes = size(xc, 2)
+    #num_basis = binomial(Dim + degree, Dim)
+    #@assert( size(H) == num_nodes, "H is inconsistent with xc")
+
+    # find the maximum number of phi basis over all cells
+    max_basis = 0
+    for cell in allleaves(root)
+        max_basis = max(max_basis, length(cell.data.points))
+    end
+
+    # set up arrays to store sparse matrix information
     rows = Array{Array{Int64}}(undef, Dim)
     cols = Array{Array{Int64}}(undef, Dim)
     Svals = Array{Array{T}}(undef, Dim)
@@ -33,20 +160,154 @@ function build_first_deriv(root::Cell{Data, Dim, T, L}, levset::LevelSet{Dim,T},
         Svals[d] = T[]
     end
 
-    # Step 4: loop over cells and integrate volume integrals of bilinear form 
-    println("timing uncut_volume_integrate!...")
-    @time uncut_volume_integrate!(rows, cols, Svals, root, points, degree)
-    println("timing cut_volume_integrate!...")
-    @time cut_volume_integrate!(rows, cols, Svals, root, levset, points, degree)
+    # get arrays/data used for tensor-product quadrature 
+    #x1d, w1d = lg_nodes(degree+1) # could also use lgl_nodes
+    #num_quad = length(w1d)^Dim             
+    #wq = zeros(num_quad)
+    #xq = zeros(Dim, num_quad)
+    #Vq = zeros(num_quad, num_basis)
+    #dVq = zeros(num_quad, num_basis, Dim)
+    #workq = zeros((Dim+1)*num_quad)
 
-    # Step 5: loop over interfaces and integrate bilinear form 
+    #Eelem = zeros(max_basis, max_basis, Dim)
+    #Selem = zeros(max_basis, max_basis, Dim)
 
-    # Step 6: loop over boundary faces and integrate bilinear form 
+    # set up the level-set function for passing to calc_cut_quad below
+    mod_levset[] = levset
+    safe_clevset = @safe_cfunction( x -> mod_levset[](x), Float64, (Vector{Float64},))
 
-    # Step 7: finalize construction 
+    for (c, cell) in enumerate(allleaves(root))
+        if cell.data.immersed
+            continue
+        end
+        # get the nodes in this cell's stencil
+        nodes = view(xc, :, cell.data.points)
+        xref = cell.data.xref 
+        dx = cell.data.dx
+        moments = cell.data.moments
+        Hcell = cell_quadrature(2*degree-1, nodes, moments, xref, dx, Val(Dim))
 
-    # returns a FirstDeriv operator 
+        if is_cut(cell)
+            # this cell *may* be cut; use Saye's algorithm
+            error("Not set up to handle cut cells yet...")
+
+        else
+            # this cell is not cut
+            Ecell = cell_symmetric_part(cell, nodes, degree)
+            #println("size(Hcell) = ",size(Hcell))
+            #println("size(Ecell) = ",size(Ecell))
+            #println("size(cell.data.points) = ",size(cell.data.points))
+            Scell = cell_skew_part(cell, nodes, degree, Hcell, Ecell)
+        end
+
+        # Now load into sparse-matrix arrays
+        for (i,row) in enumerate(cell.data.points)            
+            for (j,col) in enumerate(cell.data.points[i+1:end])                
+                for d = 1:Dim
+                    if abs(Scell[i,i+j,d]) > 1e-13
+                        append!(rows[d], row)
+                        append!(cols[d], col)
+                        append!(Svals[d], Scell[i,i+j,d])
+                    end
+                end
+            end
+        end
+    end
+
+    x1d, w1d = lg_nodes(degree+1) # could also use lgl_nodes
+    wq_face = zeros(length(w1d)^(Dim-1))
+    xq_face = zeros(Dim, length(wq_face))
+    num_face_quad = length(wq_face)
+    work_left = zeros(max_basis*length(wq_face))
+    work_right = zero(work_left)
+
+    Sface = zeros(max_basis, max_basis)
+    #Sface = view(Selem,:,:,1) # shallow copy
+
+    # loop over interfaces
+    for face in ifaces 
+        cleft = face.cell[1]
+        cright = face.cell[2]
+        xc_left = view(xc, :, cleft.data.points)
+        xc_right = view(xc, :, cright.data.points)
+        num_basis_left = length(cleft.data.points)
+        num_basis_right = length(cright.data.points)
+
+        if is_immersed(face)
+            # immersed faces do not contribute to derivative operator 
+            continue
+        elseif is_cut(face)
+            error("Not set up to handle cut faces yet...")
+        else
+            face_quadrature!(xq_face, wq_face, face.boundary, x1d, w1d, face.dir)
+            interp_left = reshape(view(work_left,1:num_basis_left*num_face_quad), 
+                                  (num_face_quad, num_basis_left))
+            build_interpolation!(interp_left, degree, xc_left, xq_face,
+                                 cleft.data.xref, cleft.data.dx)
+            interp_right = reshape(view(work_right,1:num_basis_right*num_face_quad), 
+                                  (num_face_quad, num_basis_right))  
+            build_interpolation!(interp_right, degree, xc_right, xq_face,
+                                 cright.data.xref, cright.data.dx)
+            fill!(Sface, zero(T))
+            for i = 1:num_basis_left
+                for j = 1:num_basis_right
+                    for (q, wq) in enumerate(wq_face)
+                        Sface[i,j] += interp_left[q,i] * interp_right[q,j] * wq
+                    end
+                    Sface[i,j] *= 0.5
+                end
+            end
+        end
+
+        # load into sparse-matrix arrays
+        for (i,row) in enumerate(cleft.data.points)
+            for (j,col) in enumerate(cright.data.points)
+                if col == row continue end 
+                if abs(Sface[i,j]) > 1e-13
+                    append!(rows[face.dir], row)    
+                    append!(cols[face.dir], col)
+                    append!(Svals[face.dir], Sface[i,j])
+                end
+            end
+        end
+    end
+
+    S = SVector(ntuple(d -> sparse(rows[d], cols[d], Svals[d]), Dim))
+    return S
 end
+
+# function build_first_deriv(root::Cell{Data, Dim, T, L}, levset::LevelSet{Dim,T},
+#                            points, degree) where {Data, Dim, T, L}
+
+#     # Step 1: refine based on points (and levset?)
+
+#     # Step 2: mark cut cells and cut faces 
+#     mark_cut_cells!(root, levset)
+
+#     # Step 3: set up arrays to store sparse matrix information
+#     rows = Array{Array{Int64}}(undef, Dim)
+#     cols = Array{Array{Int64}}(undef, Dim)
+#     Svals = Array{Array{T}}(undef, Dim)
+#     for d = 1:Dim
+#         rows[d] = Int[]
+#         cols[d] = Int[] 
+#         Svals[d] = T[]
+#     end
+
+#     # Step 4: loop over cells and integrate volume integrals of bilinear form 
+#     println("timing uncut_volume_integrate!...")
+#     @time uncut_volume_integrate!(rows, cols, Svals, root, points, degree)
+#     println("timing cut_volume_integrate!...")
+#     @time cut_volume_integrate!(rows, cols, Svals, root, levset, points, degree)
+
+#     # Step 5: loop over interfaces and integrate bilinear form 
+
+#     # Step 6: loop over boundary faces and integrate bilinear form 
+
+#     # Step 7: finalize construction 
+
+#     # returns a FirstDeriv operator 
+# end
 
 """
     uncut_volume_integrate!(rows, cols, Svals, root, points, degree)
@@ -326,8 +587,9 @@ function build_first_deriv(root::Cell{Data, Dim, T, L}, faces, points, degree
     return S
 end
 
+
 function build_boundary_operator(root::Cell{Data, Dim, T, L}, boundary_faces, 
-                                 points, degree) where {Data, Dim, T, L}
+                                 xc, degree) where {Data, Dim, T, L}
     num_face = length(boundary_faces)
     bnd_nrm = Array{Matrix{T}}(undef, num_face)
     bnd_pts = Array{Matrix{T}}(undef, num_face)
@@ -343,8 +605,9 @@ function build_boundary_operator(root::Cell{Data, Dim, T, L}, boundary_faces,
     x1d, w1d = lg_nodes(degree+1) # could also use lgl_nodes
     num_quad = length(w1d)^(Dim-1)
     wq_face = zeros(num_quad)
+    
     #work = dgd_basis_work_array(degree, max_basis, length(wq_face), Val(Dim))
-    work = DGDWorkSpace{T,Dim}(degree, max_basis, length(wq_face))
+    #work = DGDWorkSpace{T,Dim}(degree, max_basis, length(wq_face))
 
     # loop over boundary faces 
     for (findex, face) in enumerate(boundary_faces)
@@ -353,11 +616,16 @@ function build_boundary_operator(root::Cell{Data, Dim, T, L}, boundary_faces,
         bnd_pts[findex] = zeros(Dim, num_quad)
         face_quadrature!(bnd_pts[findex], wq_face, face.boundary, x1d, w1d, di)
         # evaluate the basis functions on the face nodes; this defines prolong
-        num_basis = length(face.cell[1].data.points)
-        bnd_prj[findex] = zeros(num_quad, num_basis)
-        dgd_basis!(bnd_prj[findex], degree,
-                   view(points, :, face.cell[1].data.points),
-                   bnd_pts[findex], work, Val(Dim))
+        num_nodes = length(face.cell[1].data.points)
+        bnd_prj[findex] = zeros(num_quad, num_nodes)
+        build_interpolation!(bnd_prj[findex], degree,
+                             view(xc, :, face.cell[1].data.points),
+                             bnd_pts[findex], face.cell[1].data.xref,
+                             face.cell[1].data.dx)
+
+        #dgd_basis!(bnd_prj[findex], degree,
+        #           view(points, :, face.cell[1].data.points),
+        #           bnd_pts[findex], work, Val(Dim))
         # define the face normals
         bnd_nrm[findex] = zero(bnd_pts[findex])
         for q = 1:num_quad
@@ -368,6 +636,49 @@ function build_boundary_operator(root::Cell{Data, Dim, T, L}, boundary_faces,
     end
     return bnd_pts, bnd_nrm, bnd_dof, bnd_prj
 end
+
+# function build_boundary_operator(root::Cell{Data, Dim, T, L}, boundary_faces, 
+#                                  points, degree) where {Data, Dim, T, L}
+#     num_face = length(boundary_faces)
+#     bnd_nrm = Array{Matrix{T}}(undef, num_face)
+#     bnd_pts = Array{Matrix{T}}(undef, num_face)
+#     bnd_dof = Array{Vector{Int}}(undef, num_face)
+#     bnd_prj = Array{Matrix{T}}(undef, num_face)
+
+#     # find the maximum number of phi basis over all cells
+#     max_basis = 0
+#     for cell in allleaves(root)
+#         max_basis = max(max_basis, length(cell.data.points))
+#     end
+
+#     x1d, w1d = lg_nodes(degree+1) # could also use lgl_nodes
+#     num_quad = length(w1d)^(Dim-1)
+#     wq_face = zeros(num_quad)
+#     #work = dgd_basis_work_array(degree, max_basis, length(wq_face), Val(Dim))
+#     work = DGDWorkSpace{T,Dim}(degree, max_basis, length(wq_face))
+
+#     # loop over boundary faces 
+#     for (findex, face) in enumerate(boundary_faces)
+#         di = abs(face.dir)
+#         # get the Gauss points on face
+#         bnd_pts[findex] = zeros(Dim, num_quad)
+#         face_quadrature!(bnd_pts[findex], wq_face, face.boundary, x1d, w1d, di)
+#         # evaluate the basis functions on the face nodes; this defines prolong
+#         num_basis = length(face.cell[1].data.points)
+#         bnd_prj[findex] = zeros(num_quad, num_basis)
+#         dgd_basis!(bnd_prj[findex], degree,
+#                    view(points, :, face.cell[1].data.points),
+#                    bnd_pts[findex], work, Val(Dim))
+#         # define the face normals
+#         bnd_nrm[findex] = zero(bnd_pts[findex])
+#         for q = 1:num_quad
+#             bnd_nrm[findex][di,q] = sign(face.dir)*wq_face[q]
+#         end
+#         # get the degrees of freedom 
+#         bnd_dof[findex] = deepcopy(face.cell[1].data.points)
+#     end
+#     return bnd_pts, bnd_nrm, bnd_dof, bnd_prj
+# end
 
 function weak_differentiate!(dudx, u, di, sbp)
     fill!(dudx, 0)
