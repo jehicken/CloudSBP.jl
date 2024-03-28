@@ -58,7 +58,7 @@ symmetric DGD mass matrix of degree `degree` based on the cloud `xc`.
 """
 function mass_row_sums!(lumped_mass, root::Cell{Data, Dim, T, L}, xc, degree
                         ) where {Data, Dim, T, L}
-    @assert( length(lumped_mass == size(xc,2),
+    @assert( length(lumped_mass) == size(xc,2),
             "lumped_mass inconsistent with xc" )
     fill!(lumped_mass, zero(eltype(lumped_mass)))
     # find the maximum number of phi basis over all cells
@@ -98,7 +98,7 @@ be satisfied.  Finally, `mu` scales the regularization term, and `degree` is
 the target exactness of the rule.
 """
 function mass_obj(root::Cell{Data, Dim, T, L}, xc, points_init, dist_ref, 
-                  H_tol, mu, degree)  where {Data, Dim, T, L})
+                  H_tol, mu, degree)  where {Data, Dim, T, L}
     num_nodes = size(xc, 2)
     # compute the penalty based on change from points_init
     phi = 0.0

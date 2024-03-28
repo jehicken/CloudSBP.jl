@@ -22,7 +22,7 @@ Random.seed!(42)
         include("test_first_derivative.jl")
     end
     
-    if false
+    if true
     @testset "test utility routines" begin 
         include("test_utils.jl")
     end
