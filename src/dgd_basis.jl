@@ -149,6 +149,7 @@ function dgd_basis!(phi, degree, xc, xq, work, ::Val{Dim}) where {Dim}
         poly_basis!(view(Vq, :, :), degree, xq_trans, work.subwork, Val(Dim))
         #tensor_basis!(view(Vq, :, :), degree, xq_trans, work.subwork, Val(Dim))
         phi[:,:] = Vq*C
+        #solve_min_norm!(phi', Vc, Vq')
     else 
         # compute both the basis and their derivatives 
         Vq = zeros(size(xq,2), num_basis, Dim+1)
@@ -160,7 +161,9 @@ function dgd_basis!(phi, degree, xc, xq, work, ::Val{Dim}) where {Dim}
         #tensor_basis_derivatives!(view(Vq, :, :, 2:Dim+1), degree, xq_trans,
         #                          Val(Dim))
         phi[:,:,1] = Vq[:,:,1]*C
+        #solve_min_norm!(phi[:,:,1]', Vc, Vq[:,:,1]')
         for d = 1:Dim
+            #solve_min_norm!(phi[:,:,d+1]', Vc, Vq[:,:,d+1]')/dx[d]
             phi[:,:,d+1] = Vq[:,:,d+1]*C/dx[d]
         end
     end
