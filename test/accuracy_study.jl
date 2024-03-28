@@ -80,6 +80,7 @@ for (k, n) in enumerate(num_x)
     @time bnd_faces = CutDGD.build_boundary_faces(root)
 
     println("timing mass_matrix...")
+    #CutDGD.set_xref_and_dx!(root, xc) # <-- this has a slight impact on accuracy
     @time M = CutDGD.mass_matrix(root, xc, degree)
     println("Number of non-zeros in M = ",nnz(M))
     #println("cond(M) = ",cond(Matrix(M)))

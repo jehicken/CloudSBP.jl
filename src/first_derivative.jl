@@ -347,8 +347,8 @@ function uncut_volume_integrate!(rows, cols, Svals, root::Cell{Data, Dim, T, L},
         # get the Gauss points on cell
         quadrature!(xq, wq, cell.boundary, x1d, w1d)
         # phi[:,:,:] is used to both the DGD basis and its derivatves at xq
-        dgd_basis!(phi, degree, view(points, :, cell.data.points), xq, work,
-                   Val(Dim))
+        dgd_basis!(phi, degree, view(points, :, cell.data.points), xq, 
+                   cell.data.xref, cell.data.dx, work, Val(Dim))
         num_basis = length(cell.data.points)
         fill!(Selem, zero(T))
         for i = 1:num_basis
@@ -425,8 +425,8 @@ function cut_volume_integrate!(rows, cols, Svals,
         # phi[:,:,:] is used to both the DGD basis and its derivatves at xq
         phi = zeros(length(wq), max_basis, Dim+1)
         work = DGDWorkSpace{T,Dim}(degree, max_basis, length(wq))
-        dgd_basis!(phi, degree, view(points, :, cell.data.points), xq, work,
-                   Val(Dim))
+        dgd_basis!(phi, degree, view(points, :, cell.data.points), xq, 
+                   cell.data.xref, cell.data.dx, work, Val(Dim))
         num_basis = length(cell.data.points)
         fill!(Selem, zero(T))
         for i = 1:num_basis
@@ -490,7 +490,8 @@ function build_first_deriv(root::Cell{Data, Dim, T, L}, faces, points, degree
         quadrature!(xq, wq, cell.boundary, x1d, w1d)
         # phi[:,:,:] holds both the DGD basis and its derivatves at xq
         #println("timing dgd_basis!...")
-        dgd_basis!(phi, degree, view(points, :, cell.data.points), xq, work, Val(Dim))
+        dgd_basis!(phi, degree, view(points, :, cell.data.points), xq,
+                   cell.data.xref, cell.data.dx, work, Val(Dim))
         num_basis = length(cell.data.points)
         #Selem = zeros(num_basis, num_basis, Dim)
         fill!(Selem, zero(T))
@@ -547,10 +548,12 @@ function build_first_deriv(root::Cell{Data, Dim, T, L}, faces, points, degree
     for face in faces 
         # get the Gauss points on face and evaluate the basis functions there
         face_quadrature!(xq_face, wq_face, face.boundary, x1d, w1d, face.dir)
-        dgd_basis!(phi_left, degree, view(points, :, face.cell[1].data.points),
-                   xq_face, work, Val(Dim))
-        dgd_basis!(phi_right, degree, view(points, :, face.cell[2].data.points),
-                   xq_face, work, Val(Dim))
+        cell = face.cell[1]
+        dgd_basis!(phi_left, degree, view(points, :, cell.data.points),
+                   xq_face, cell.data.xref, cell.data.dx, work, Val(Dim))
+        cell = face.cell[2]
+        dgd_basis!(phi_right, degree, view(points, :, cell.data.points),
+                   xq_face, cell.data.xref, cell.data.dx, work, Val(Dim))
         num_basis_left = length(face.cell[1].data.points)
         num_basis_right = length(face.cell[2].data.points)
         #Sface = zeros(num_basis_left, num_basis_right)

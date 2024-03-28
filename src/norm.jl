@@ -344,7 +344,7 @@ function diagonal_norm!(H, root::Cell{Data, Dim, T, L}, points, degree
 end
 
 """
-    diagonal_norm_ref!(points_bar, H_bar, root, points, degree)
+    diagonal_norm_rev!(points_bar, H_bar, root, points, degree)
 
 Reverse-mode differentiation of the weighted norm, `dot(H, H_bar)` with respect
 to the node coordinates in points.

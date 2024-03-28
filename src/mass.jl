@@ -3,6 +3,8 @@
 
 Returns the DGD mass matrix for degree `degree` based on the mesh in the tree 
 `root` and the centers in `xc`.
+
+
 """
 function mass_matrix(root::Cell{Data, Dim, T, L}, xc, degree
                      ) where {Data, Dim, T, L}
@@ -21,8 +23,8 @@ function mass_matrix(root::Cell{Data, Dim, T, L}, xc, degree
         # get the Gauss points on cell
         quadrature!(xq, wq, cell.boundary, x1d, w1d)
         # phi[:,:,:] holds the DGD basis at xq 
-        dgd_basis!(phi, degree, view(xc, :, cell.data.points), xq, work,
-                   Val(Dim))
+        dgd_basis!(phi, degree, view(xc, :, cell.data.points), xq, 
+                   cell.data.xref, cell.data.dx, work, Val(Dim))
         num_basis = length(cell.data.points)
         fill!(Melem, zero(T))
         for i = 1:num_basis
@@ -72,16 +74,55 @@ function mass_row_sums!(lumped_mass, root::Cell{Data, Dim, T, L}, xc, degree
         # get the Gauss points on cell
         quadrature!(xq, wq, cell.boundary, x1d, w1d)
         # phi[:,:,:] holds the DGD basis at xq 
-        dgd_basis!(phi, degree, view(xc, :, cell.data.points), xq, work,
-                   Val(Dim))
+        dgd_basis!(phi, degree, view(xc, :, cell.data.points), xq, 
+                   cell.data.xref, cell.data.dx, work, Val(Dim))
         num_basis = length(cell.data.points)
-        fill!(Melem, zero(T))
         for i = 1:num_basis
             # add contributions to element row sums
-            for q = 1:size(wq,1)
+            for q in axes(wq,1)
                 lumped_mass[cell.data.points[i]] += phi[q,i] * wq[q]
             end
         end
+    end
+    return nothing
+end
+
+"""
+    mass_row_sums_rev!(xc_bar, lumped_mass_bar, root, xc, degree)
+
+Reverse-mode differentiation of the weighted norm,
+`dot(lumped_mass, lumped_mass_bar)`
+with respect to the node coordinates in points.
+"""
+function mass_row_sums_rev!(xc_bar, lumped_mass_bar,
+                            root::Cell{Data, Dim, T, L}, xc, degree
+                            ) where {Data, Dim, T, L}
+    @assert( length(lumped_mass_bar) == size(xc,2) == size(xc_bar,2),
+            "lumped_mass and/or xc_bar inconsistent with xc" )
+    fill!(xc_bar, zero(eltype(xc_bar)))
+    # find the maximum number of phi basis over all cells
+    max_basis = max_leaf_stencil(root)
+    x1d, w1d = lg_nodes(degree+1) # could also use lgl_nodes
+    wq = zeros(length(w1d)^Dim)
+    xq = zeros(Dim, length(wq))
+    phi_bar = zeros(length(wq), max_basis)
+    for cell in allleaves(root)
+        # get the Gauss points on cell
+        quadrature!(xq, wq, cell.boundary, x1d, w1d)
+        num_basis = length(cell.data.points)
+        fill!(phi_bar, zero(T))
+        for i = 1:num_basis
+            # add contributions to element row sums
+            for q in axes(wq,1)
+                # lumped_mass[cell.data.points[i]] += phi[q,i] * wq[q]
+                phi_bar[q,i] += lumped_mass_bar[cell.data.points[i]] * wq[q]
+            end
+        end
+        # phi[:,:,:] holds the DGD basis at xq 
+        # dgd_basis!(phi, degree, view(xc, :, cell.data.points), xq, work,
+        #            Val(Dim))
+        dgd_basis_rev!(view(xc_bar, :, cell.data.points), phi_bar, degree, xc,
+                       xq, cell.data.xref, cell.data.dx, Val(Dim))          
     end
     return nothing
 end

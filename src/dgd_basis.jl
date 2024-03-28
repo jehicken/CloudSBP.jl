@@ -5,10 +5,6 @@ struct DGDWorkSpace{T, Dim}
     C::Vector{T}
     xc_trans::Matrix{T}
     xq_trans::Matrix{T}
-    lower::Vector{T}
-    upper::Vector{T}
-    dx::Vector{T}
-    xavg::Vector{T}
     subwork::Vector{T}
 
     """
@@ -25,13 +21,8 @@ struct DGDWorkSpace{T, Dim}
         C = zeros(T, (num_basis*max_stencil))
         xc_trans = zeros(T, (Dim, max_stencil))
         xq_trans = zeros(T, (Dim, max_quad))
-        lower = zeros(T, (Dim))
-        upper = zeros(T, (Dim))
-        dx = zeros(T, (Dim))
-        xavg = zeros(T, (Dim))
         subwork = zeros(T, ((Dim+1)*max(max_stencil, max_quad)))
-        return new(Vc, Vq, C, xc_trans, xq_trans, lower, upper, dx, xavg, 
-                   subwork)
+        return new(Vc, Vq, C, xc_trans, xq_trans, subwork)
     end
 end
 
@@ -48,33 +39,26 @@ If `ndims(phi) > 2`, it is assumed that both the basis functions (stored in phi
 computed.  Otherwise, the basis functions are computed and returned in the 2d 
 array `phi[:,:]`.
 """
-function dgd_basis!(phi, degree, xc, xq, work, ::Val{Dim}) where {Dim}
+function dgd_basis!(phi, degree, xc, xq, xref, dx, work, ::Val{Dim}) where {Dim}
     @assert( size(phi,1) == size(xq,2), "phi and xq have inconsistent sizes")
     @assert( size(xc,1) == size(xq,1) == Dim, "xc/xq/Dim are inconsistent")
+    @assert( length(xref) == length(dx) == Dim, "xref/dx/Dim are inconsistent")
 
     # Get aliases to arrays stored in work
     num_basis = binomial(Dim + degree, Dim)
-    #num_basis = (degree+1)^Dim 
     Vc = reshape(view(work.Vc, 1:size(xc,2)*num_basis), (size(xc,2), num_basis))
     C = reshape(view(work.C, 1:size(xc,2)*num_basis), (num_basis, size(xc,2)))
     Vq = reshape(view(work.Vq, 1:size(xq,2)*num_basis), (size(xq,2), num_basis))
     xc_trans = view(work.xc_trans, :, 1:size(xc,2))
     xq_trans = view(work.xq_trans, :, 1:size(xq,2))
-    lower = work.lower; upper = work.upper; dx = work.dx; xavg = work.xavg
 
     # apply an affine transformation to the points xc and xq
-    lower[:] = minimum([real.(xc) real.(xq)], dims=2)
-    upper[:] = maximum([real.(xc) real.(xq)], dims=2)
-    dx[:] = upper - lower 
-    xavg[:] = 0.5*(upper + lower)
-    dx[:] .*= 1.001
-    #xc_trans = zero(xc) 
     for I in CartesianIndices(xc)
-        xc_trans[I] = (xc[I] - xavg[I[1]])/dx[I[1]] - 0.5
+        xc_trans[I] = (xc[I] - xref[I[1]])/dx[I[1]] - 0.5
     end 
     #xq_trans = zero(xq)
     for I in CartesianIndices(xq)
-        xq_trans[I] = (xq[I] - xavg[I[1]])/dx[I[1]] - 0.5
+        xq_trans[I] = (xq[I] - xref[I[1]])/dx[I[1]] - 0.5
     end
     # evaluate the poly basis and get DGD coefficients (stored in C)
     poly_basis!(Vc, degree, xc_trans, work.subwork, Val(Dim))
@@ -122,7 +106,7 @@ function solveBasisCoefficients(V, degree)
 end
 
 """
-    dgd_basis_rev!(xc_bar, phi_bar, degree, xc, xq, Val(Dim))
+    dgd_basis_rev!(xc_bar, phi_bar, degree, xc, xq, xref, dx, Val(Dim))
 
 Reverse mode algorithmic differentiation of `dgd_basis!`.  The output `xc_bar` 
 is the derivative of the output (defined implicitly by the input `phi_bar`) as 
@@ -133,23 +117,20 @@ dimension.
 
 *Note*: Only differentiates the version of `dgd_basis!` that returns the basis functions, not their derivatives.
 """
-function dgd_basis_rev!(xc_bar, phi_bar, degree, xc, xq, ::Val{Dim}) where {Dim}
+function dgd_basis_rev!(xc_bar, phi_bar, degree, xc, xq, xref, dx, ::Val{Dim}
+                        ) where {Dim}
     @assert( size(phi_bar,1) == size(xq,2), "phi_bar and xq are inconsistent")
-    @assert( size(xc_bar,1) == size(xc,1) == size(xq,1) == Dim,
-        "xc_bar/xc/xq/Dim have inconsistent sizes")
+    @assert( size(xc_bar,1) == size(xc,1) == size(xq,1) == length(xref) == 
+             length(dx) == Dim,
+             "xc_bar/xc/xq/xref/dx/Dim have inconsistent sizes")
     # apply an affine transformation to the points xc and xq
-    lower = minimum([xc xq], dims=2)
-    upper = maximum([xc xq], dims=2)
-    dx = upper - lower
-    xavg = 0.5*(upper + lower)
-    dx .*= 1.001
     xc_trans = zero(xc)
     for I in CartesianIndices(xc)
-        xc_trans[I] = (xc[I] - xavg[I[1]])/dx[I[1]] - 0.5
+        xc_trans[I] = (xc[I] - xref[I[1]])/dx[I[1]] - 0.5
     end 
     xq_trans = zero(xq)
     for I in CartesianIndices(xq)
-        xq_trans[I] = (xq[I] - xavg[I[1]])/dx[I[1]] - 0.5
+        xq_trans[I] = (xq[I] - xref[I[1]])/dx[I[1]] - 0.5
     end
     # evaluate the poly basis and get DGD coefficients (stored in C)
     num_basis = binomial(Dim + degree, Dim)
