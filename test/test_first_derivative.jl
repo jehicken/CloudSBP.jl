@@ -65,6 +65,57 @@ end
     end
 end
 
+@testset "test cell_symmetric_part (cut cell version): dimension $Dim, degree $degree" for Dim in 1:1, degree in 1:4
+
+    # use a unit HyperRectangle centered at the origin
+    cell = Cell(SVector(ntuple(i -> -0.5, Dim)),
+                SVector(ntuple(i -> 1.0, Dim)),
+                CellData(Vector{Int}(), Vector{Int}()))
+
+    # define the level set 
+    if Dim == 1
+        levset = x -> (x[1] + 0.5)^2 - 0.25
+    elseif Dim == 2
+        levset = x -> 4*(x[1] + 1.5)^2 + 36*x[2]^2 - 9
+    else 
+        levset = x -> (x[1] + 0.5)^2 + x[2]^2 + x[3]^2 - 0.25^2
+    end
+
+    # create a point cloud 
+    num_basis = binomial(Dim + degree, Dim)
+    num_nodes = num_basis + 1
+    xc = randn(Dim, num_nodes)
+    CutDGD.set_xref_and_dx!(cell, xc)
+
+    # get the boundary operator 
+    E = CutDGD.cell_symmetric_part(cell, xc, degree, levset)
+    println("E = ",E)
+
+    # get quadrature points for the cell using Saye's algorithm directly;
+    # these are used to integrate derivatives of the boundary integrands
+    # using the divergence theorem.
+    wq, xq = cut_cell_quad(cell.boundary, levset, 2*degree+1, fit_degree=2*degree)
+    num_quad = length(wq)
+
+    # evaluate the monomial basis at the point cloud and quadrature points 
+    V = zeros(num_nodes, num_basis)
+    CutDGD.monomial_basis!(V, degree, xc, Val(Dim))
+    Vq = zeros(num_quad, num_basis)
+    CutDGD.monomial_basis!(Vq, degree, xq, Val(Dim))
+    dVq = zeros(num_quad, num_basis, Dim)
+    CutDGD.monomial_basis_derivatives!(dVq, degree, xq, Val(Dim))
+
+    for di = 1:Dim
+        for p = 1:num_basis
+            for q = 1:num_basis
+                integral = vec(V[:,p])'*E[:,:,di]*vec(V[:,q])
+                ref_value = dot(wq, dVq[:,p,di].*Vq[:,q] + dVq[:,q,di].*Vq[:,p])
+                @test isapprox(integral, ref_value, atol=1e-10)
+            end
+        end
+    end
+end
+
 @testset "test cell_skew_part: dimension $Dim, degree $degree" for Dim in 1:3, degree in 1:4
 
     # use a unit HyperRectangle centered at the origin

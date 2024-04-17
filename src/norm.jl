@@ -27,10 +27,6 @@ function calc_moments!(root::Cell{Data, Dim, T, L}, levset, degree
     Vq = zeros(num_quad, num_basis)
     workq = zeros((Dim+1)*num_quad)
 
-    # set up the level-set function for passing to calc_cut_quad below
-    mod_levset[] = levset
-    safe_clevset = @safe_cfunction( x -> mod_levset[](x), Float64, (Vector{Float64},))
-
     for (c, cell) in enumerate(allleaves(root))
         xref = cell.data.xref 
         dx = cell.data.dx 
@@ -39,8 +35,8 @@ function calc_moments!(root::Cell{Data, Dim, T, L}, levset, degree
             continue
         elseif is_cut(cell)
             # this cell *may* be cut; use Saye's algorithm
-            wq_cut, xq_cut, surf_wts, surf_pts = calc_cut_quad(
-                cell.boundary, safe_clevset, degree+1, fit_degree=degree)
+            wq_cut, xq_cut = cut_cell_quad(cell.boundary, levset, degree+1, 
+                                           fit_degree=degree)
             # consider resizing 1D arrays here, if need larger
             for I in CartesianIndices(xq_cut)
                 xq_cut[I] = (xq_cut[I] - xref[I[1]])/dx[I[1]] - 0.5

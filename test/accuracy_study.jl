@@ -8,7 +8,9 @@ using Random
 #using BenchmarkTools
 using SparseArrays
 using CutDGD
-#using Krylov
+using Krylov
+using LinearOperators
+using ILUZero
 #using LinearOperators
 #using AlgebraicMultigrid
 #using IncompleteLU
@@ -24,6 +26,7 @@ num_x = [5; 10; 20; 40]
 
 h = 1.0./num_x
 L2_err = zeros(size(num_x))
+proj_err = zero(L2_err)
 
 for (k, n) in enumerate(num_x)
     println("computing error for h = ",h[k])
@@ -56,10 +59,10 @@ for (k, n) in enumerate(num_x)
     println("Number of DOFs  = ",size(xc,2))
     println("Ratio           = ",CutDGD.num_leaves(root)/size(xc,2))
     println("timing build_nn_stencils...")
-    @time CutDGD.build_nn_stencils!(root, xc, 2*degree-1)
+    @time CutDGD.build_nn_stencils!(root, xc, degree)
 
     CutDGD.set_xref_and_dx!(root, xc)
-    m = CutDGD.calc_moments!(root, 2*degree-1)
+    m = CutDGD.calc_moments!(root, degree)
 
     num_nodes = size(xc,2)
     dist_ref = ones(num_nodes)
@@ -69,7 +72,7 @@ for (k, n) in enumerate(num_x)
     vol = 1.0
     H_tol .*= 0.1*vol/num_nodes #  0.5e-5
     xc_init = deepcopy(xc)
-    H = CutDGD.opt_norm!(root, xc, 2*degree-1, H_tol, mu, dist_ref, max_rank)
+    H = CutDGD.opt_norm!(root, xc, degree, H_tol, mu, dist_ref, max_rank)
    
     println("!!!!!!!!!!!!!!!!  Reset NNs")
     @time CutDGD.build_nn_stencils!(root, xc, degree)
@@ -236,7 +239,7 @@ for (k, n) in enumerate(num_x)
     println("sum(H*u) = ",dot(H, u))
 
     CutDGD.weak_differentiate!(dudx, u, 1, sbp)
-    println("Error dudx - exact = ", norm(dudx - H.*ones(num_nodes)))
+    println("Error dudx - exact = ", norm(dudx - M*ones(num_nodes)))
     #println(dudx - H.*ones(num_nodes))
     if k == 3
         PyPlot.scatter(vec(xc[1,:]), vec(xc[2,:]), s=6,c="k")
@@ -259,6 +262,22 @@ for (k, n) in enumerate(num_x)
     #L2_err[k] = sqrt(abs(dot(err,H.*err)))
     L2_err[k] = sqrt(err'*M*err)
 
+    # compute the projection error 
+    #M_lump = vec(sum(M, dims=1))
+    #u_proj = M \ (M_lump.*uexact)
+    #err = u_proj - uexact
+    #proj_err[k] = sqrt(err'*M*err)
+
+    #M_lump = diagm(1.0./vec(sum(M, dims=1)))
+    println("timing ILUO factorization...")
+    @time prec = ilu0(M)
+    prec_op = LinearOperator(Float64, num_nodes, num_nodes, false, false,
+                             (y, v) -> y .= prec \ v )
+    println("timing Mass matrix solve...")
+    @time du, stats = cg(M, u, atol=1e-12, rtol=1.0e-10, history=true, M=prec_op)
+    println(stats)
+    println(stats.residuals)
+        
     # plot the solution
     if k == -1
         #u .= 0.5*(1 + exp(1))
@@ -296,6 +315,9 @@ end
 println("h = ",h)
 println("L2_err = ", L2_err)
 println("rates =  ", log.(L2_err[2:end]./L2_err[1:end-1])./log.(h[2:end]./h[1:end-1]))
+
+#println("proj err = ", proj_err)
+#println("proj err rates =  ", log.(proj_err[2:end]./proj_err[1:end-1])./log.(h[2:end]./h[1:end-1]))
 
 # mass matrix, degree = 2
 # L2_err = [0.0035789007463621378, 0.0009857855501513258, 0.00015126955826943507, 1.937283008623771e-5]
