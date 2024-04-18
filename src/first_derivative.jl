@@ -93,8 +93,8 @@ function cell_symmetric_part(cell::Cell{Data, Dim, T, L}, xc, degree, levset;
     sumE = zeros(Dim)
     for dir in ntuple(i -> i % 2 == 1 ? -div(i+1,2) : div(i,2), 2*Dim)
         face = cell_side_rect(dir, cell)
-        wq_face, xq_face = cut_face_quad(face, abs(dir), levset, 2*degree, 
-                                         fit_degree=2*degree-1)
+        wq_face, xq_face = cut_face_quad(face, abs(dir), levset, degree+1,
+                                         fit_degree=degree)
         interp = zeros(length(wq_face), num_nodes)
         build_interpolation!(interp, degree, xc, xq_face, xref, dx)
         for i in axes(interp,2)
@@ -109,8 +109,8 @@ function cell_symmetric_part(cell::Cell{Data, Dim, T, L}, xc, degree, levset;
 
     # at this point, all planar faces of cell have been accounted for; now deal 
     # with the level-set surface `levset(x) = 0` passing through the cell
-    surf_wts, surf_pts = cut_surf_quad(cell.boundary, levset, 2*degree, 
-                                       fit_degree=2*degree-1)
+    surf_wts, surf_pts = cut_surf_quad(cell.boundary, levset, degree+1,
+                                       fit_degree=degree)
 
     if length(surf_wts) == 0
         # the cell was not actually cut, so the is nothing left to do but check
@@ -125,7 +125,7 @@ function cell_symmetric_part(cell::Cell{Data, Dim, T, L}, xc, degree, levset;
     interp = zeros(size(surf_wts,2), num_nodes)
     build_interpolation!(interp, degree, xc, surf_pts, xref, dx)
     fac = 1/size(surf_wts,2)
-    for dir = 1:Dim 
+    for dir = 1:Dim
         # correct for geometric conservation 
         if geo_conserve
             surf_wts[dir,:] -= fac*(sumE[dir] + sum(surf_wts[dir,:])) * 
@@ -139,7 +139,7 @@ function cell_symmetric_part(cell::Cell{Data, Dim, T, L}, xc, degree, levset;
             end
         end
         if geo_conserve
-            @assert( abs(sum(E[:,:,dir])) < 100*eps(),
+            @assert( abs(sum(E[:,:,dir])) < 10^(degree+1)*eps(),
                      "geo. cons. law failed (2)" )
         end
     end

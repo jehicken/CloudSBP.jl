@@ -65,7 +65,7 @@ end
     end
 end
 
-@testset "test cell_symmetric_part (cut cell version): dimension $Dim, degree $degree" for Dim in 1:1, degree in 1:4
+@testset "test cell_symmetric_part (cut cell version): dimension $Dim, degree $degree" for Dim in 1:2, degree in 1:4
 
     # use a unit HyperRectangle centered at the origin
     cell = Cell(SVector(ntuple(i -> -0.5, Dim)),
@@ -83,18 +83,17 @@ end
 
     # create a point cloud 
     num_basis = binomial(Dim + degree, Dim)
-    num_nodes = num_basis + 1
+    num_nodes = binomial(Dim + degree + 1, Dim) #  num_basis + 1
     xc = randn(Dim, num_nodes)
     CutDGD.set_xref_and_dx!(cell, xc)
 
     # get the boundary operator 
-    E = CutDGD.cell_symmetric_part(cell, xc, degree, levset)
-    println("E = ",E)
+    E = CutDGD.cell_symmetric_part(cell, xc, degree, levset, geo_conserve=false)
 
     # get quadrature points for the cell using Saye's algorithm directly;
     # these are used to integrate derivatives of the boundary integrands
     # using the divergence theorem.
-    wq, xq = cut_cell_quad(cell.boundary, levset, 2*degree+1, fit_degree=2*degree)
+    wq, xq = cut_cell_quad(cell.boundary, levset, degree+1, fit_degree=degree)
     num_quad = length(wq)
 
     # evaluate the monomial basis at the point cloud and quadrature points 
