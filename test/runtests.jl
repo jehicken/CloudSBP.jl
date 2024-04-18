@@ -7,6 +7,7 @@ using Random
 using LevelSets
 using CxxWrap
 using SparseArrays
+using CutQuad
 
 # Following StaticArrays approach of using repeatable "random" tests
 Random.seed!(42)
@@ -18,10 +19,9 @@ Random.seed!(42)
 
 @testset "CutDGD.jl" begin
     
-    @testset "test DGD basis routines" begin 
-        include("test_dgd_basis.jl")
+    @testset "test first-derivative routines" begin 
+        include("test_first_derivative.jl")
     end
-
 
     if false
     @testset "test utility routines" begin 
@@ -55,6 +55,10 @@ Random.seed!(42)
     @testset "test first-derivative routines" begin 
         include("test_first_derivative.jl")
     end
+
+    #@testset "test DGD basis routines" begin 
+    #    include("test_dgd_basis.jl")
+    #end
 
     end
 

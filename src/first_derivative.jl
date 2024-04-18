@@ -21,7 +21,8 @@ end
 
 Construct a `HyperRectangle` for given cell on side `dir`.
 """
-function cell_side_rect(dir, cell::Cell{Data, Dim, T, L}) where {Data, Dim, T, L}
+function cell_side_rect(dir, cell::Cell{Data, Dim, T, L}
+                        ) where {Data, Dim, T, L}
     if dir > 0 
         origin = SVector(
             ntuple(i -> i == dir ? 
@@ -69,6 +70,80 @@ function cell_symmetric_part(cell::Cell{Data, Dim, T, L}, xc, degree
             end
         end
     end
+    return E
+end
+
+"""
+    E = cell_symmetric_part(cell, xc, degree, levset [,geo_conserve=true])
+
+Returns the symmetric part of the first-derivative SBP operator for the 
+_possibly_ cut cell `cell`.  The point cloud associated with `cell` is `xc`, 
+and the boundary operator is `2*degree` exact for boundary integrals.  If 
+`geo_conserve` is `true`, then the geometric conservation law is enforced on 
+the resulting E matrices.
+"""
+function cell_symmetric_part(cell::Cell{Data, Dim, T, L}, xc, degree, levset;
+                             geo_conserve::Bool=true) where {Data, Dim, T, L}
+    @assert( length(cell.data.dx) > 0, "cell.data.dx is empty")
+    @assert( length(cell.data.xref) > 0, "cell.data.xref is empty")
+    num_nodes = size(xc,2)
+    xref = cell.data.xref 
+    dx = cell.data.dx
+    E = zeros(num_nodes, num_nodes, Dim)
+    sumE = zeros(Dim)
+    for dir in ntuple(i -> i % 2 == 1 ? -div(i+1,2) : div(i,2), 2*Dim)
+        face = cell_side_rect(dir, cell)
+        wq_face, xq_face = cut_face_quad(face, abs(dir), levset, 2*degree, 
+                                         fit_degree=2*degree-1)
+        interp = zeros(length(wq_face), num_nodes)
+        build_interpolation!(interp, degree, xc, xq_face, xref, dx)
+        for i in axes(interp,2)
+            for j in axes(interp,2)
+                for q in axes(interp,1)
+                    E[i,j,abs(dir)] += interp[q,i] * wq_face[q] * interp[q,j] * sign(dir)
+                end
+            end
+        end
+        sumE[abs(dir)] += sum(wq_face)*sign(dir)
+    end
+
+    # at this point, all planar faces of cell have been accounted for; now deal 
+    # with the level-set surface `levset(x) = 0` passing through the cell
+    surf_wts, surf_pts = cut_surf_quad(cell.boundary, levset, 2*degree, 
+                                       fit_degree=2*degree-1)
+
+    if length(surf_wts) == 0
+        # the cell was not actually cut, so the is nothing left to do but check
+        for dir = 1:Dim
+            @assert( abs(sumE[dir]) < 100*eps(), "geo. cons. law failed (1)" )
+        end 
+        return E
+    end
+
+    # NOTE: negative sign needed because of sign convention in algoim
+    surf_wts .*= -1.0
+    interp = zeros(size(surf_wts,2), num_nodes)
+    build_interpolation!(interp, degree, xc, surf_pts, xref, dx)
+    fac = 1/size(surf_wts,2)
+    for dir = 1:Dim 
+        # correct for geometric conservation 
+        if geo_conserve
+            surf_wts[dir,:] -= fac*(sumE[dir] + sum(surf_wts[dir,:])) * 
+                ones(size(surf_wts,2))
+        end
+        for i in axes(interp,2)
+            for j in axes(interp,2)
+                for q in axes(interp,1)
+                    E[i,j,dir] += interp[q,i] * surf_wts[dir,q] * interp[q,j]
+                end
+            end
+        end
+        if geo_conserve
+            @assert( abs(sum(E[:,:,dir])) < 100*eps(),
+                     "geo. cons. law failed (2)" )
+        end
+    end
+
     return E
 end
 
@@ -190,6 +265,7 @@ function build_first_deriv(root::Cell{Data, Dim, T, L}, ifaces, xc, levset, degr
         if is_cut(cell)
             # this cell *may* be cut; use Saye's algorithm
             error("Not set up to handle cut cells yet...")
+            Ecell = cell_symmetric_part(cell, nodes, degree, levset)
 
         else
             # this cell is not cut
