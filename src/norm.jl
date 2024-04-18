@@ -6,7 +6,7 @@
 Returns the first total `degree` integral moments for all cells in the tree
 defined by `root`.  The tree must have been preprocessed to identify poentially
 cut and immersed cells using the `levset` level-set function.  In addition, the 
-`cell.data.xref` and `cell.data.dx` fields must containt the reference origin
+`cell.data.xref` and `cell.data.dx` fields must contain the reference origin
 for each cell.
 
 WARNING: The signature of the function `levset` must of the form
