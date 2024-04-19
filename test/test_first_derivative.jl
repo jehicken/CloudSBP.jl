@@ -306,6 +306,7 @@ end
         xc = randn(Dim, num_nodes)
         cell.data.points = 1:num_nodes
         CutDGD.set_xref_and_dx!(cell, xc)
+        cell.data.cut = true
 
         # get the quadrature
         m = CutDGD.calc_moments!(cell, levset, 2*degree-1)
