@@ -208,6 +208,7 @@ function cell_skew_part(cell::Cell{Data, Dim, T, L}, xc, degree, H, E
                 S[col,row,d] -= vals[offset+col]
             end
         end
+        #println("norm(A*vals - vec(B[:,d])) = ", norm(A*vals - vec(B[:,d])))
     end
     return S
 end
