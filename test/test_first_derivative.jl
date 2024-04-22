@@ -65,6 +65,76 @@ end
     end
 end
 
+@testset "test compatible_surf_quad!: dimension $Dim, degree $degree" for Dim in 1:2, degree in 1:4
+    # use a unit HyperRectangle centered at the origin
+    cell = Cell(SVector(ntuple(i -> -0.5, Dim)),
+                SVector(ntuple(i -> 1.0, Dim)),
+                CellData(Vector{Int}(), Vector{Int}()))
+
+    if Dim == 1
+        levset = x -> (x[1] + 0.5)^2 - 0.25
+    elseif Dim == 2
+        levset = x -> 4*(x[1] + 1.5)^2 + 36*x[2]^2 - 9
+    elseif Dim == 3
+        levset = x -> (x[1] + 0.5)^2 + x[2]^2 + x[3]^2 - 0.25^2
+    end
+    
+    # create a point cloud 
+    num_basis = binomial(Dim + degree, Dim)
+    num_nodes = binomial(Dim + 2*degree -1, Dim)
+    xc = randn(Dim, num_nodes)
+    cell.data.points = 1:num_nodes
+    CutDGD.set_xref_and_dx!(cell, xc)
+    cell.data.cut = true
+    
+    # get the quadrature
+    m = CutDGD.calc_moments!(cell, levset, 2*degree-1)
+    w = CutDGD.cell_quadrature(2*degree-1, xc, m, cell.data.xref, cell.data.dx, Val(Dim))
+    
+    # get the symmetric boundary operator on the planar faces
+    xref = cell.data.xref 
+    dx = cell.data.dx
+    E = zeros(num_nodes, num_nodes, Dim)
+    for dir in ntuple(i -> i % 2 == 1 ? -div(i+1,2) : div(i,2), 2*Dim)
+        face = CutDGD.cell_side_rect(dir, cell)
+        wq_face, xq_face = cut_face_quad(face, abs(dir), levset, degree+1,
+                                         fit_degree=degree)
+        interp = zeros(length(wq_face), num_nodes)
+        CutDGD.build_interpolation!(interp, degree, xc, xq_face, xref, dx)
+        for i in axes(interp,2)
+            for j in axes(interp,2)
+                for q in axes(interp,1)
+                    E[i,j,abs(dir)] += interp[q,i] * wq_face[q] * interp[q,j] * sign(dir)
+                end
+            end
+        end        
+    end
+
+    # get the immersed surface quadrature, and then enforce compatibility
+    surf_wts, surf_pts = cut_surf_quad(cell.boundary, levset, 4*degree, fit_degree=degree)
+    CutDGD.compatible_surf_quad!(surf_wts, surf_pts, cell, xc, degree, E, w)
+
+    # check for compatibility using monomial basis
+    V = zeros(num_nodes, num_basis)
+    CutDGD.monomial_basis!(V, degree, xc, Val(Dim))
+    dV = zeros(num_nodes, num_basis, Dim)
+    CutDGD.monomial_basis_derivatives!(dV, degree, xc, Val(Dim))
+    Vq = zeros(size(surf_wts,2), num_basis)
+    CutDGD.monomial_basis!(Vq, degree, surf_pts, Val(Dim))
+            
+    # multiply by random vector to reduce the number of tests 
+    lvec = randn(num_basis)
+    rvec = randn(num_basis)
+    
+    for d = 1:Dim
+        VtEV = Vq'*(surf_wts[d,:].*Vq)
+        VtHdV = V'*(w.*dV[:,:,d]) + dV[:,:,d]'*(w.*V) - V'*E[:,:,d]*V
+        #println("VtEV = ",VtEV)
+        #println("VtHdV = ",VtHdV)
+        @test isapprox(dot(lvec, VtEV*rvec), dot(lvec, VtHdV*rvec), atol=1e-10)
+    end
+end
+
 @testset "test cell_symmetric_part (cut cell version): degree $degree" for degree in 1:4
 
     @testset "dimension = 1" begin
