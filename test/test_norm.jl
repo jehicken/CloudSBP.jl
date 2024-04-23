@@ -28,7 +28,7 @@
     CutDGD.set_xref_and_dx!(root, points)
 
     # evaluate the moments and ...
-    m = CutDGD.calc_moments!(root, levset_func, degree)
+    m = CutDGD.calc_moments!(root, levset_func, 2*degree-1, degree)
 
     # ...check that (scaled) zero-order moments sum to cut-domain volume scaled
     # by the constant basis
@@ -87,7 +87,7 @@ sphere_vol(r, ::Val{1}) = 2*r
     CutDGD.set_xref_and_dx!(root, points)
 
     # evaluate the moments and ...
-    m = CutDGD.calc_moments!(root, levset_func, degree) 
+    m = CutDGD.calc_moments!(root, levset_func, 2*degree-1, degree) 
 
     # ...check that (scaled) zero-order moments sum to cut-domain volume scaled
     # by the constant basis

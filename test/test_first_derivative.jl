@@ -88,7 +88,7 @@ end
     cell.data.cut = true
     
     # get the quadrature
-    m = CutDGD.calc_moments!(cell, levset, 2*degree-1)
+    m = CutDGD.calc_moments!(cell, levset, 2*degree-1, degree)
     w = CutDGD.cell_quadrature(2*degree-1, xc, m, cell.data.xref, cell.data.dx, Val(Dim))
     
     # get the symmetric boundary operator on the planar faces
@@ -97,7 +97,7 @@ end
     E = zeros(num_nodes, num_nodes, Dim)
     for dir in ntuple(i -> i % 2 == 1 ? -div(i+1,2) : div(i,2), 2*Dim)
         face = CutDGD.cell_side_rect(dir, cell)
-        wq_face, xq_face = cut_face_quad(face, abs(dir), levset, degree+1,
+        wq_face, xq_face = cut_face_quad(face, abs(dir), levset, ceil(Int,(degree+1)/2),
                                          fit_degree=degree)
         interp = zeros(length(wq_face), num_nodes)
         CutDGD.build_interpolation!(interp, degree, xc, xq_face, xref, dx)
@@ -111,7 +111,9 @@ end
     end
 
     # get the immersed surface quadrature, and then enforce compatibility
-    surf_wts, surf_pts = cut_surf_quad(cell.boundary, levset, 4*degree, fit_degree=degree)
+    surf_wts, surf_pts = cut_surf_quad(cell.boundary, levset, 5*degree, fit_degree=degree)
+    # NOTE: negative sign needed because of sign convention in algoim
+    surf_wts .*= -1.0
     CutDGD.compatible_surf_quad!(surf_wts, surf_pts, cell, xc, degree, E, w)
 
     # check for compatibility using monomial basis
@@ -379,7 +381,7 @@ end
         cell.data.cut = true
 
         # get the quadrature
-        m = CutDGD.calc_moments!(cell, levset, 2*degree-1)
+        m = CutDGD.calc_moments!(cell, levset, 2*degree-1, degree)
         w = CutDGD.cell_quadrature(2*degree-1, xc, m, cell.data.xref, cell.data.dx, Val(Dim))
 
         # get the symmetric boundary operator 

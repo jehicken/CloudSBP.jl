@@ -1,7 +1,7 @@
 # Routines related to constructing a diagonal norm
 
 """
-    m = calc_moments!(root, levset, degree)
+    m = calc_moments!(root, levset, degree, fit_degree)
 
 Returns the first total `degree` integral moments for all cells in the tree
 defined by `root`.  The tree must have been preprocessed to identify poentially
@@ -13,15 +13,18 @@ WARNING: The signature of the function `levset` must of the form
 levset(Vector{Float64})::Float64, because this assumption is used when it is
 wrapped using `csafe_function`.
 """
-function calc_moments!(root::Cell{Data, Dim, T, L}, levset, degree
+function calc_moments!(root::Cell{Data, Dim, T, L}, levset, degree, fit_degree
                        ) where {Data, Dim, T, L}
+    @assert( degree >= 0, "degree must be non-negative" )
+    @assert( 0 <= fit_degree <= degree, "invalid fit_degree value" )
     num_cell = num_leaves(root)
     num_basis = binomial(Dim + degree, Dim)
     moments = zeros(num_basis, num_cell)
 
     # get arrays/data used for tensor-product quadrature 
-    x1d, w1d = lg_nodes(degree+1) # could also use lgl_nodes
-    num_quad = length(w1d)^Dim             
+    num_quad1d = ceil(Int, (degree+1)/2)
+    x1d, w1d = lg_nodes(num_quad1d) # could also use lgl_nodes
+    num_quad = length(w1d)^Dim
     wq = zeros(num_quad)
     xq = zeros(Dim, num_quad)
     Vq = zeros(num_quad, num_basis)
@@ -35,8 +38,8 @@ function calc_moments!(root::Cell{Data, Dim, T, L}, levset, degree
             continue
         elseif is_cut(cell)
             # this cell *may* be cut; use Saye's algorithm
-            wq_cut, xq_cut = cut_cell_quad(cell.boundary, levset, degree+1, 
-                                           fit_degree=degree)
+            wq_cut, xq_cut = cut_cell_quad(cell.boundary, levset, num_quad1d, 
+                                           fit_degree=fit_degree)
             # consider resizing 1D arrays here, if need larger
             for I in CartesianIndices(xq_cut)
                 xq_cut[I] = (xq_cut[I] - xref[I[1]])/dx[I[1]] - 0.5
@@ -72,7 +75,7 @@ This variant is useful when you want moments for all cells in the tree `root`.
 """
 function calc_moments!(root::Cell{Data, Dim, T, L}, degree) where {Data, Dim, T, L}
     levset(x) = 1.0
-    return calc_moments!(root, levset, degree)
+    return calc_moments!(root, levset, degree, 0)
 end
 
 """

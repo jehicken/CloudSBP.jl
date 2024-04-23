@@ -279,6 +279,8 @@ function compatible_surf_quad!(surf_wts, surf_pts, cell::Cell{Data, Dim, T, L},
         B[:,d] -= A*surf_wts[d,:]
         w = A\B[:,d]
         res = A*w - B[:,d]
+        println("size(A) = ",size(A))
+        println("rank(A) = ",rank(A))
         println("residual = ",norm(res))
         #solve_min_norm!(w, A', view(B,:,d))
         surf_wts[d,:] += w
