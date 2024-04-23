@@ -111,7 +111,7 @@ end
     end
 
     # get the immersed surface quadrature, and then enforce compatibility
-    surf_wts, surf_pts = cut_surf_quad(cell.boundary, levset, 5*degree, fit_degree=degree)
+    surf_wts, surf_pts = cut_surf_quad(cell.boundary, levset, 2*degree, fit_degree=degree)
     # NOTE: negative sign needed because of sign convention in algoim
     surf_wts .*= -1.0
     CutDGD.compatible_surf_quad!(surf_wts, surf_pts, cell, xc, degree, E, w)
