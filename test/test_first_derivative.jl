@@ -238,7 +238,7 @@ end
 
 end
 
-@testset "test compatible_symmetric_part!: dimension $Dim, degree $degree" for Dim in 1:3, degree in 1:4
+@testset "test make_compatible!: dimension $Dim, degree $degree" for Dim in 1:3, degree in 1:4
     # use a unit HyperRectangle centered at the origin
     cell = Cell(SVector(ntuple(i -> -0.5, Dim)),
                 SVector(ntuple(i -> 1.0, Dim)),
@@ -266,7 +266,7 @@ end
     E = CutDGD.cell_symmetric_part(cell, xc, degree, levset, fit_degree=min(3,degree))
 
     # modify E to make it compatible with H
-    CutDGD.compatible_symmetric_part!(E, cell, xc, degree, w)
+    CutDGD.make_compatible!(E, w, cell, xc, degree)
 
     # check for compatibility using monomial basis
     V = zeros(num_nodes, num_basis)
@@ -308,7 +308,7 @@ end
         E = CutDGD.cell_symmetric_part(cell, xc, degree)
 
         # get the skew-symmetric operator
-        S = CutDGD.cell_skew_part(cell, xc, degree, w, E)
+        S = CutDGD.cell_skew_part(E, w, cell, xc, degree)
 
         # form D and check that it exactly differentiates polynomials up to degree
         V = zeros(num_nodes, num_basis)
@@ -361,10 +361,10 @@ end
 
         # get the symmetric boundary operator 
         E = CutDGD.cell_symmetric_part(cell, xc, degree, levset, fit_degree=min(3,degree))
-        CutDGD.compatible_symmetric_part!(E, cell, xc, degree, w)
+        CutDGD.make_compatible!(E, w, cell, xc, degree)
 
         # get the skew-symmetric operator
-        S = CutDGD.cell_skew_part(cell, xc, degree, w, E)
+        S = CutDGD.cell_skew_part(E, w, cell, xc, degree)
 
         # form D and check that it exactly differentiates polynomials up to degree
         V = zeros(num_nodes, num_basis)

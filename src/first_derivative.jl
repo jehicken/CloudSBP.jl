@@ -74,11 +74,13 @@ function cell_symmetric_part(cell::Cell{Data, Dim, T, L}, xc, degree
 end
 
 """
-    E = cell_symmetric_part(cell, xc, degree, levset [,geo_conserve=true])
+    E = cell_symmetric_part(cell, xc, degree, levset [,fit_degree=degree])
 
 Returns the symmetric part of the first-derivative SBP operator for the 
 _possibly_ cut cell `cell`.  The point cloud associated with `cell` is `xc`, 
-and the boundary operator uses `2*degree` exact quadrature.
+and the boundary operator uses `2*degree` exact quadrature.  The `fit_degree`
+input indicates the degree of the Bernstein polynomial used by Algoim to
+approximate the level set.
 """
 function cell_symmetric_part(cell::Cell{Data, Dim, T, L}, xc, degree, levset;
                              fit_degree::Int=degree) where {Data, Dim, T, L}
@@ -135,86 +137,15 @@ function cell_symmetric_part(cell::Cell{Data, Dim, T, L}, xc, degree, levset;
     return E
 end
 
-# """
-#     E = cell_symmetric_part(cell, xc, degree, levset [,geo_conserve=true])
+"""
+    make_compatible!(E, H, cell, xc, degree)
 
-# Returns the symmetric part of the first-derivative SBP operator for the 
-# _possibly_ cut cell `cell`.  The point cloud associated with `cell` is `xc`, 
-# and the boundary operator is `2*degree` exact for boundary integrals.  If 
-# `geo_conserve` is `true`, then the geometric conservation law is enforced on 
-# the resulting E matrices.
-# """
-# function cell_symmetric_part(cell::Cell{Data, Dim, T, L}, xc, degree, levset,
-#                              H_cell::AbstractVector{Float64}=zeros(0)
-#                              ) where {Data, Dim, T, L}
-#     @assert( length(cell.data.dx) > 0, "cell.data.dx is empty")
-#     @assert( length(cell.data.xref) > 0, "cell.data.xref is empty")
-#     num_nodes = size(xc,2)
-#     xref = cell.data.xref 
-#     dx = cell.data.dx
-#     E = zeros(num_nodes, num_nodes, Dim)
-#     sumE = zeros(Dim)
-#     for dir in ntuple(i -> i % 2 == 1 ? -div(i+1,2) : div(i,2), 2*Dim)
-#         face = cell_side_rect(dir, cell)
-#         wq_face, xq_face = cut_face_quad(face, abs(dir), levset, degree+1,
-#                                          fit_degree=degree)
-#         interp = zeros(length(wq_face), num_nodes)
-#         build_interpolation!(interp, degree, xc, xq_face, xref, dx)
-#         for i in axes(interp,2)
-#             for j in axes(interp,2)
-#                 for q in axes(interp,1)
-#                     E[i,j,abs(dir)] += interp[q,i] * wq_face[q] * interp[q,j] * sign(dir)
-#                 end
-#             end
-#         end
-#         sumE[abs(dir)] += sum(wq_face)*sign(dir)
-#     end
-
-#     # at this point, all planar faces of cell have been accounted for; now deal 
-#     # with the level-set surface `levset(x) = 0` passing through the cell
-#     surf_wts, surf_pts = cut_surf_quad(cell.boundary, levset, degree+1,
-#                                        fit_degree=degree)
-
-#     if length(surf_wts) == 0
-#         # the cell was not actually cut, so the is nothing left to do but check
-#         for dir = 1:Dim
-#             @assert( abs(sumE[dir]) < 100*eps(), "geo. cons. law failed (1)" )
-#         end 
-#         return E
-#     end
-
-#     # the cell is cut; need to adjust surf_wts for compatibility
-#     compatible_surf_quad!(surf_wts, surf_pts, cell, xc, degree, E, H_cell)
-
-#     # NOTE: negative sign needed because of sign convention in algoim
-#     surf_wts .*= -1.0
-#     interp = zeros(size(surf_wts,2), num_nodes)
-#     build_interpolation!(interp, degree, xc, surf_pts, xref, dx)
-#     fac = 1/size(surf_wts,2)
-#     for dir = 1:Dim
-#         # correct for geometric conservation 
-#         if geo_conserve
-#             surf_wts[dir,:] -= fac*(sumE[dir] + sum(surf_wts[dir,:])) * 
-#                 ones(size(surf_wts,2))
-#         end
-#         for i in axes(interp,2)
-#             for j in axes(interp,2)
-#                 for q in axes(interp,1)
-#                     E[i,j,dir] += interp[q,i] * surf_wts[dir,q] * interp[q,j]
-#                 end
-#             end
-#         end
-#         if geo_conserve
-#             @assert( abs(sum(E[:,:,dir])) < 10^(degree+1)*eps(),
-#                      "geo. cons. law failed (2)" )
-#         end
-#     end
-
-#     return E
-# end
-
-function compatible_symmetric_part!(E, cell::Cell{Data, Dim, T, L}, xc, degree,
-                                    H) where {Data, Dim, T, L}
+Modifies the SBP symmetric operator `E` for cell `cell` such that it is
+compatible with the diagonal norm `H`.  The operators are defined over the
+nodes `xc` and are for a degree `degree` exact SBP first-derivative operator.
+"""
+function make_compatible!(E, H, cell::Cell{Data, Dim, T, L}, xc, degree
+                          ) where {Data, Dim, T, L}
     @assert( degree >= 0, "degree must be non-negative" )
     @assert( size(E,1) == size(E,2) == length(H) == size(xc,2), 
             "E, H, and/or xc are incompatible sizes" )
@@ -284,7 +215,7 @@ function compatible_symmetric_part!(E, cell::Cell{Data, Dim, T, L}, xc, degree,
 end
 
 """
-    S = cell_skew_part(cell, xc, degree, H, E)
+    S = cell_skew_part(E, H, cell, xc, degree)
 
 Returns the skew-symmetric parts of SBP diagonal-norm operators for the element
 `cell` based on the nodes `xc`.  The operator is exact for polynomials of total 
@@ -293,8 +224,10 @@ which must be exact for degree `2*degree - 1` polynomials over `xc`.  Finally,
 the symmetric part of the SBP operators must be provided in `E`.  Note that `E`
 and the returned `S` are three dimensional arrays, with `E[:,:,d]` and
 `S[:,:,d]` holding the operators for the direction `d`.
+
+**NOTE**: E and H must be compatible, in the sense of SBP operators.
 """
-function cell_skew_part(cell::Cell{Data, Dim, T, L}, xc, degree, H, E
+function cell_skew_part(E, H, cell::Cell{Data, Dim, T, L}, xc, degree
                         ) where {Data, Dim, T, L}
 
     num_basis = binomial(Dim + degree, Dim)
