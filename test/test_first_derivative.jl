@@ -54,14 +54,22 @@ end
     dVq = zeros(num_quad, num_basis, Dim)
     CutDGD.monomial_basis_derivatives!(dVq, degree, xq, Val(Dim))
 
+    # multiply by random vector to reduce the number of tests 
+    lvec = randn(num_basis)
+    rvec = randn(num_basis)
+
     for di = 1:Dim
-        for p = 1:num_basis
-            for q = 1:num_basis
-                integral = vec(V[:,p])'*E[:,:,di]*vec(V[:,q])
-                ref_value = dot(wq, dVq[:,p,di].*Vq[:,q] + dVq[:,q,di].*Vq[:,p])
-                @test isapprox(integral, ref_value, atol=1e-12)
-            end
-        end
+        VtEV = V'*E[:,:,di]*V 
+        VtHdV = Vq'*(wq.*dVq[:,:,di]) + dVq[:,:,di]'*(wq.*Vq)
+        @test isapprox( dot(lvec, VtEV*rvec), dot(lvec, VtHdV*rvec), atol=1e-12)
+
+        # for p = 1:num_basis
+        #     for q = 1:num_basis
+        #         integral = vec(V[:,p])'*E[:,:,di]*vec(V[:,q])
+        #         ref_value = dot(wq, dVq[:,p,di].*Vq[:,q] + dVq[:,q,di].*Vq[:,p])
+        #         @test isapprox(integral, ref_value, atol=1e-12)
+        #     end
+        # end
     end
 end
 
@@ -391,6 +399,127 @@ end
     end 
     
 end
+
+@testset "test interface_skew_part: dimension $Dim, degree $degree" for Dim in 1:3, degree in 1:4
+
+    @testset "uncut cells" begin
+        # use a pair of HyperRectangles on either side of origin
+        cell_left = Cell(SVector(ntuple(i -> i == 1.0 ? -1.0 : 0.0, Dim)),
+                         SVector(ntuple(i -> 1.0, Dim)),
+                         CellData(Vector{Int}(), Vector{Int}()))
+        cell_right = Cell(SVector(ntuple(i -> 0.0, Dim)),
+                          SVector(ntuple(i -> 1.0, Dim)),
+                          CellData(Vector{Int}(), Vector{Int}()))
+
+        # add an interface
+        dir = 1
+        face = CutDGD.build_face(dir, cell_left, cell_right)
+        
+        # create a point cloud 
+        num_basis = binomial(Dim + degree, Dim)
+        num_nodes = 3*num_basis
+        xc = randn(Dim, num_nodes)
+        xc[1,:] .*= 2.0 # to spread out the cells
+        cell_left.data.points = 1:num_basis
+        cell_right.data.points = (num_basis+1):num_nodes
+        CutDGD.set_xref_and_dx!(cell_left, xc)
+        CutDGD.set_xref_and_dx!(cell_right, xc)
+
+        # get the interface matrix 
+        xc_left = view(xc, :, face.cell[1].data.points)
+        xc_right = view(xc, :, face.cell[2].data.points)
+        Sface = CutDGD.interface_skew_part(face, xc_left, xc_right, degree)
+
+        # get the face quadrature for testing purposes
+        x1d, w1d = CutDGD.lg_nodes(degree+1)
+        wq_face = zeros(length(w1d)^(Dim-1))
+        xq_face = zeros(Dim, length(wq_face))
+        CutDGD.face_quadrature!(xq_face, wq_face, face.boundary, x1d, w1d, face.dir)
+
+        # Evaluate the monomials at the point cloud and the face quadrature
+        V_left = zeros(length(cell_left.data.points), num_basis)
+        V_right = zeros(length(cell_right.data.points), num_basis)
+        CutDGD.monomial_basis!(V_left, degree, xc_left, Val(Dim))
+        CutDGD.monomial_basis!(V_right, degree, xc_right, Val(Dim))
+        Vq = zeros(length(wq_face), num_basis)
+        CutDGD.monomial_basis!(Vq, degree, xq_face, Val(Dim))
+        
+        # left and right multiply by random vectors to reduce the number of tests 
+        lvec = randn(num_basis)
+        rvec = randn(num_basis)
+
+        VtSV = V_left'*Sface*V_right
+        VtWV = 0.5*Vq'*(wq_face.*Vq) # need factor of 0.5, which is included in Sface
+
+        @test isapprox(dot(lvec, VtSV*rvec), dot(lvec, VtWV*rvec), atol=1e-10)
+ 
+    end
+
+    @testset "cut cells" begin
+        # use a pair of HyperRectangles on either side of origin
+        cell_left = Cell(SVector(ntuple(i -> i == 1.0 ? -1.0 : 0.0, Dim)),
+                         SVector(ntuple(i -> 1.0, Dim)),
+                         CellData(Vector{Int}(), Vector{Int}()))
+        cell_right = Cell(SVector(ntuple(i -> 0.0, Dim)),
+                          SVector(ntuple(i -> 1.0, Dim)),
+                          CellData(Vector{Int}(), Vector{Int}()))
+
+        # add an interface
+        dir = 1
+        face = CutDGD.build_face(dir, cell_left, cell_right)
+
+        if Dim == 1
+            levset = x -> x[1]^2 - 0.25
+        elseif Dim == 2
+            levset = x -> x[1]^2 + x[2]^2 - 0.25
+        elseif Dim == 3
+            levset = x -> x[1]^2 + x[2]^2 + x[3]^2 - 0.25
+        end
+
+        # create a point cloud 
+        num_basis = binomial(Dim + degree, Dim)
+        num_nodes = 3*num_basis
+        xc = randn(Dim, num_nodes)
+        xc[1,:] .*= 2.0 # to spread out the cells
+        cell_left.data.points = 1:num_basis
+        cell_right.data.points = (num_basis+1):num_nodes
+        CutDGD.set_xref_and_dx!(cell_left, xc)
+        CutDGD.set_xref_and_dx!(cell_right, xc)
+        cell_left.data.cut = true
+        cell_right.data.cut = true 
+        face.cut = true
+
+        # get the interface matrix 
+        xc_left = view(xc, :, face.cell[1].data.points)
+        xc_right = view(xc, :, face.cell[2].data.points)
+        Sface = CutDGD.interface_skew_part(face, xc_left, xc_right, degree,
+                                           levset, fit_degree=min(3,degree))
+
+        # get the face quadrature for testing purposes
+        wq_face, xq_face = cut_face_quad(face.boundary, face.dir, levset, degree+1,
+                                         fit_degree=min(3,degree))
+
+        # Evaluate the monomials at the point cloud and the face quadrature
+        V_left = zeros(length(cell_left.data.points), num_basis)
+        V_right = zeros(length(cell_right.data.points), num_basis)
+        CutDGD.monomial_basis!(V_left, degree, xc_left, Val(Dim))
+        CutDGD.monomial_basis!(V_right, degree, xc_right, Val(Dim))
+        Vq = zeros(length(wq_face), num_basis)
+        CutDGD.monomial_basis!(Vq, degree, xq_face, Val(Dim))
+        
+        # left and right multiply by random vectors to reduce the number of tests 
+        lvec = randn(num_basis)
+        rvec = randn(num_basis)
+
+        VtSV = V_left'*Sface*V_right
+        VtWV = 0.5*Vq'*(wq_face.*Vq) # need factor of 0.5, which is included in Sface
+
+        @test isapprox(dot(lvec, VtSV*rvec), dot(lvec, VtWV*rvec), atol=1e-10)
+
+    end
+end
+
+
 
 # @testset "test uncut_volume_integrate!: dimension $Dim" for Dim in 1:3
 

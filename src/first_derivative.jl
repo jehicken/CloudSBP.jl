@@ -304,14 +304,14 @@ end
 """
     Sface = interface_skew_part(face, xc_left, xc_right, degree)
 
-Constructs the form:
+Constructs the form
 
 ``\\int_{\\text{face}} V_i V_j d\\Gamma``
 
 where the integral is over the face `face` with unit normal in the coordinate
 direction `face.dir`.  The functions ``V_i`` and ``V_j`` can be regarded as
 degree `degree` basis functions at the nodes `i` and `j` within the stencil of
-the right and left cells, respectively.
+the left and right cells, respectively.
 """
 function interface_skew_part(face::Face{Dim, T, Cell}, xc_left, xc_right, degree
                              ) where {Dim,T,Cell}
@@ -349,7 +349,7 @@ level-set within the Algoim library.
 function interface_skew_part(face::Face{Dim, T, Cell}, xc_left, xc_right,
                              degree, levset; fit_degree::Int=fit_degree
                              ) where {Dim,T,Cell}
-    wq_face, xq_face = cut_face_quad(face, face.dir, levset, degree+1,
+    wq_face, xq_face = cut_face_quad(face.boundary, face.dir, levset, degree+1,
                                      fit_degree=fit_degree)
     interp_left = zeros(length(wq_face), size(xc_left,2))
     interp_right = zeros(length(wq_face), size(xc_right,2))
