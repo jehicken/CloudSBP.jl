@@ -62,14 +62,6 @@ end
         VtEV = V'*E[:,:,di]*V 
         VtHdV = Vq'*(wq.*dVq[:,:,di]) + dVq[:,:,di]'*(wq.*Vq)
         @test isapprox( dot(lvec, VtEV*rvec), dot(lvec, VtHdV*rvec), atol=1e-12)
-
-        # for p = 1:num_basis
-        #     for q = 1:num_basis
-        #         integral = vec(V[:,p])'*E[:,:,di]*vec(V[:,q])
-        #         ref_value = dot(wq, dVq[:,p,di].*Vq[:,q] + dVq[:,q,di].*Vq[:,p])
-        #         @test isapprox(integral, ref_value, atol=1e-12)
-        #     end
-        # end
     end
 end
 

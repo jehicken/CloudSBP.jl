@@ -21,6 +21,33 @@ mutable struct BoundaryOperator{T}
 end
 
 """
+    E = BoundaryOperator(T)
+
+Returns a `BoundaryOperator` with empty arrays.
+"""
+function BoundaryOperator(T::Type)
+    BoundaryOperator(Array{Matrix{T}}(undef,0), Array{Matrix{T}}(undef,0),
+                     Array{Vector{Int}}(undef,0), Array{Matrix{T}}(undef,0))
+end
+
+"""
+    xq, nrm, dof, prj = push_new_face!(bndry, Dim, num_nodes, num_quad)
+
+Creates new memory at the end of the fields in the given `BoundaryOperator` and 
+returns references to the newly created arrays.
+"""
+function push_new_face!(bndry::BoundaryOperator{T}, Dim, num_nodes, num_quad
+                        ) where {T}
+    push!(bndry.xq_face, zeros(Dim, num_quad))
+    push!(bndry.nrm_face, zeros(Dim, num_quad))
+    push!(bndry.dof_face, zeros(Int, num_nodes))
+    push!(bndry.prj_face, zeros(num_quad, num_nodes))
+    return bndry.xq_face[end], bndry.nrm_face[end], bndry.dof_face[end], 
+        bndry.prj_face[end]
+end
+
+
+"""
 Summation-by-parts first derivative operator
 
 `S[d]` holds the skew-symmetric part for direction `d` and `E[:]` holds `BoundaryOperator`s that define the symmetric part.
@@ -462,6 +489,122 @@ function skew_operator(root::Cell{Data, Dim, T, L}, ifaces, xc, levset, degree;
     S = SVector(ntuple(d -> sparse(rows[d], cols[d], Svals[d]), Dim))
     return S
 end
+
+"""
+    add_face_to_boundary!(bndry, face, xc, degree)
+
+Computes the quadrature points, normal vector, degrees of freedom, and 
+interpolation operator for the face `face` and adds this data to the given 
+`BoundaryOperator`, `bndry`.  `xc` are the locations of the nodes in the 
+stencil of `face`, and `degree` determines the order of accuracy of the 
+quadrature (`2*degree+1`) and the interpolation.
+"""
+function add_face_to_boundary!(bndry::BoundaryOperator{T}, face, xc, degree
+                               ) where {T}
+    cell = face.cell[1]
+    Dim = size(xc,1)
+    @assert( length(cell.data.points) == size(xc,2), 
+            "face.cell[1] and xc are incompatible")
+    x1d, w1d = lg_nodes(degree+1)
+    num_nodes = length(cell.data.points)
+    num_quad = length(w1d)^(Dim-1)
+    wq_face = zeros(num_quad)
+    xq_face, nrm, dof, prj = push_new_face!(bndry, Dim, num_nodes, num_quad)
+    face_quadrature!(xq_face, wq_face, face.boundary, x1d, w1d, face.dir)
+    build_interpolation!(prj, degree, xc, xq_face, cell.data.xref, cell.data.dx)
+    for (q,w) in enumerate(wq_face) 
+        nrm[abs(face.dir),q] = sign(face.dir)*w 
+    end
+    dof[:] = cell.data.points # just make a reference to points?
+    return nothing
+end
+
+"""
+    add_face_to_boundary!(bndry, face, xc, degree, levset [, fit_degree=degree])
+
+This version of the method is for planar boundary faces that are cut by the
+level-set geometry defined by the function `levset`.  The optional kwarg 
+`fit_degree` indicates the degree of the Bernstein polynomials used to 
+approximate the level-set within the Algoim library.
+"""
+function add_face_to_boundary!(bndry::BoundaryOperator{T}, face, xc, degree, 
+                               levset; fit_degree::Int=degree
+                               ) where {T}
+    cell = face.cell[1]
+    @assert( length(cell.data.points) == size(xc,2), 
+            "face.cell[1] and xc are incompatible")
+    wq_cut, xq_cut = cut_face_quad(face.boundary, face.dir, levset, degree+1,
+                                     fit_degree=fit_degree)
+    num_nodes = length(cell.data.points)
+    num_quad = size(xq_cut,2)
+    xq_face, nrm, dof, prj = push_new_face!(bndry, Dim, num_nodes, num_quad)
+    xq_face[:,:] = xq_cut[:,:]
+    build_interpolation!(prj, degree, xc, xq_face, cell.data.xref, cell.data.dx)
+    for (q,w) in enumerate(wq_cut) 
+        nrm[abs(face.dir),q] = sign(face.dir)*w 
+    end
+    dof[:] = cell.data.points # just make a reference to points?
+    return nothing
+end
+
+function add_face_to_boundary!(bndry::BoundaryOperator{T},
+                               cell::Cell{Data, Dim, T, L}, xc, degree, levset; fit_degree::Int=degree) where {Data, Dim, T, L}
+    @assert( length(cell.data.points) == size(xc,2), 
+            "cell and xc are incompatible")
+    surf_wts, surf_pts = cut_surf_quad(cell.boundary, levset, degree+1,
+                                       fit_degree=fit_degree)
+    num_quad = size(surf_pts,2)
+    if num_quad == 0
+        # Algoim may determine the cell is not actually cut
+        return nothing 
+    end
+    num_nodes = length(cell.data.points)
+    xq_face, nrm, dof, prj = push_new_face!(bndry, Dim, num_nodes, num_quad)
+    xq_face[:,:] = surf_pts[:,:]
+    build_interpolation!(prj, degree, xc, xq_face, cell.data.xref, cell.data.dx)
+    nrm[:,:] = -surf_wts
+    dof[:] = cell.data.points # just make a reference to points?
+    return nothing
+end
+
+
+function boundary_operators(bc_map, root::Cell{Data, Dim, T, L}, boundary_faces,
+                            xc, levset, degree; fit_degree::Int=degree)
+                            where {Data, Dim, T, L}
+
+    # Create a boundary operator for each unique BC
+    bc_types = unique(values(bc_map))
+    E = Dict( bc => BoundaryOperator(eltype(xc)) for bc in bc_types)
+
+    # loop over all planar boundary faces.
+    for face in boundary_faces
+        if is_immersed(face)
+            continue
+        end
+        di = abs(face.dir)
+        side = 2*di + div(sign(face.dir) - 1,2)
+        if is_cut(face)
+            add_face_to_boundary!(E[bc_map[side]], face, 
+                                  view(xc, :, face.cell[1].data.points), degree,
+                                  levset, fit_degree=fit_degree)
+        else
+            add_face_to_boundary!(E[bc_map[side]], face, 
+                                  view(xc, :, face.cell[1].data.points), degree)
+        end
+    end
+
+    # loop over the non-planar boundary faces
+    for cell in allleaves(root)
+        if is_cut(cell)
+            add_face_to_boundary!(E[bc_map["ib"]], cell, 
+                                  view(xc, :, cell.data.points), degree,
+                                  levset, fit_degree=fit_degree)
+        end
+    end
+
+    return E
+end
+
 
 function build_boundary_operator(root::Cell{Data, Dim, T, L}, boundary_faces, 
                                  xc, degree) where {Data, Dim, T, L}
