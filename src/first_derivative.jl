@@ -569,8 +569,8 @@ end
 
 
 function boundary_operators(bc_map, root::Cell{Data, Dim, T, L}, boundary_faces,
-                            xc, levset, degree; fit_degree::Int=degree)
-                            where {Data, Dim, T, L}
+                            xc, levset, degree; fit_degree::Int=degree
+                            ) where {Data, Dim, T, L}
 
     # Create a boundary operator for each unique BC
     bc_types = unique(values(bc_map))
