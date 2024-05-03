@@ -19,8 +19,8 @@ Random.seed!(42)
 
 @testset "CutDGD.jl" begin
     
-    @testset "test first-derivative routines" begin 
-        include("test_first_derivative.jl")
+    @testset "test skew-part routines" begin
+        include("test_skew_part.jl")
     end
 
     if false
@@ -50,6 +50,14 @@ Random.seed!(42)
 
     @testset "test norm routines" begin
         include("test_norm.jl")
+    end
+
+    @testset "test symmetric-part routines" begin
+        include("test_symmetric_part.jl")
+    end
+
+    @testset "test skew-part routines" begin
+        include("test_skew_part.jl")
     end
 
     @testset "test first-derivative routines" begin 

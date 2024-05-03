@@ -33,7 +33,10 @@ include("mesh.jl")
 include("quadrature.jl")
 include("dgd_basis.jl")
 include("mass.jl")
-include("first_derivative.jl")
 include("norm.jl")
+include("symmetric_part.jl")
+include("skew_part.jl")
+include("first_derivative.jl")
+
 
 end
