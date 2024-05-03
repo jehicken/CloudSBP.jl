@@ -547,29 +547,78 @@ function add_face_to_boundary!(bndry::BoundaryOperator{T}, face, xc, degree,
     return nothing
 end
 
+"""
+    add_face_to_boundary!(bndry, cell, xc, degree, levset, levset_grad!
+                          [, fit_degree=degree])
+
+This version of the method is for faces that are the intersection between the
+level-set `levset(x)=0` and the cell `cell`.  In addition to the level-set, this
+function needs a function that can compute the gradient of the level-set,
+`levset_grad!(g, x)` which returns the gradient at `x` in the array `g`.  As
+usual, `fit_degree` indicates the degree of the Bernstein polynomials used to 
+approximate the level-set within the Algoim library.
+
+**NOTE**: we use `2*degree+1` nodes in each direction for the surface
+quadrature, since it must integrate the normal in addition to the flux.
+"""
 function add_face_to_boundary!(bndry::BoundaryOperator{T},
-                               cell::Cell{Data, Dim, T, L}, xc, degree, levset; fit_degree::Int=degree) where {Data, Dim, T, L}
+                               cell::Cell{Data, Dim, T, L}, xc, degree, levset,
+                               levset_grad!; fit_degree::Int=degree
+                               ) where {Data, Dim, T, L}
     @assert( length(cell.data.points) == size(xc,2), 
             "cell and xc are incompatible")
-    surf_wts, surf_pts = cut_surf_quad(cell.boundary, levset, degree+1,
+    surf_wts, surf_pts = cut_surf_quad(cell.boundary, levset, 2*degree+1,
                                        fit_degree=fit_degree)
     num_quad = size(surf_pts,2)
     if num_quad == 0
         # Algoim may determine the cell is not actually cut
         return nothing 
-    end
+    end    
     num_nodes = length(cell.data.points)
     xq_face, nrm, dof, prj = push_new_face!(bndry, Dim, num_nodes, num_quad)
     xq_face[:,:] = surf_pts[:,:]
     build_interpolation!(prj, degree, xc, xq_face, cell.data.xref, cell.data.dx)
     nrm[:,:] = -surf_wts
     dof[:] = cell.data.points # just make a reference to points?
+
+    # Algoim's quadrature weights are sometimes separated, in the sense that
+    # each direction has distinct quadrature nodes; this is problematic for our
+    # formulation, so correct that here.
+    dphi = zeros(Dim)
+    for q in axes(nrm,2)
+        levset_grad!(dphi, surf_pts[:,q])
+        dphi ./= -norm(dphi)
+        dA = dot(nrm[:,q], dphi)
+        nrm[:,q] = dphi*dA
+    end
     return nothing
 end
 
+"""
+    E = boundary_operators(bc_map, root, boundary_faces, xc, levset,
+                           levset_grad!, degree [, fit_degree=degree])
 
+Generates a set of `BoundaryOperator`s for each of the `2*Dim` planar boundary
+as well as the immersed surface within the domain of the root cell `root`.
+`bc_map` is a Dictionary that maps boundaries to boundary conditions; the key
+used for a planar boundaries is its side index:
+
+* 1 -- EAST (root.boundary.origin[1])
+* 2 -- WEST (root.boundary.origin[1] + root.boundary.width[1])
+* 3 -- SOUTH (root.boundary.origin[2])
+* 4 -- NORTH (root.boundary.origin[2] + root.boundary.width[2])
+* 5 -- BOTTOM (root.boundary.origin[3])
+* 6 -- TOP (root.boundary.origin[3] + root.boundary.width[3])
+
+The key for the immersed surface is the string "ib".  All the planar boundary
+faces are stored in `boundary_faces`.  The DOF coordinates are given by `xc`.
+The immersed surface is defined by `levset(x) = 0`, and the gradient of this
+level set is `g` after calling `levset_grad!(g,x)`.  The formal polynomial
+accuracy of the boundary operator is `degree`, while `fit_degree` gives the
+degree of the Bernstein polynomial used by Algoim to fit `levset`.
+"""
 function boundary_operators(bc_map, root::Cell{Data, Dim, T, L}, boundary_faces,
-                            xc, levset, degree; fit_degree::Int=degree
+                            xc, levset, levset_grad!, degree; fit_degree::Int=degree
                             ) where {Data, Dim, T, L}
 
     # Create a boundary operator for each unique BC
@@ -598,7 +647,7 @@ function boundary_operators(bc_map, root::Cell{Data, Dim, T, L}, boundary_faces,
         if is_cut(cell)
             add_face_to_boundary!(E[bc_map["ib"]], cell, 
                                   view(xc, :, cell.data.points), degree,
-                                  levset, fit_degree=fit_degree)
+                                  levset, levset_grad!, fit_degree=fit_degree)
         end
     end
 
