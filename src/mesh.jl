@@ -258,9 +258,9 @@ well-conditioned Vandermonde matrix of total degree `degree`.
 function build_nn_stencils!(root, points, degree)
     kdtree = KDTree(points, leafsize = 10)
     Dim = size(points,1)
-    max_stencil_iter = max(1,degree^2)  # degree + 1
+    max_stencil_iter = max(degree^2) + 2  # degree + 1
     sortres = true
-    tol = 5.0
+    tol = 10.0
     for leaf in allleaves(root)
         xc = center(leaf)
         num_basis = binomial(Dim + degree, Dim)

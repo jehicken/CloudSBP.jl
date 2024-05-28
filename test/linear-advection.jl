@@ -19,13 +19,13 @@ Dim = 2
 vel = ones(Dim)
 
 uexact(x::AbstractVector) = exp(sum(x))
-dudx(x::AbstractVector) = 2*exp(sum(x))
+dudx(x::AbstractVector) = Dim*exp(sum(x))
 uexact(x::AbstractMatrix) = exp.(sum(x,dims=1))'
-dudx(x::AbstractMatrix) = 2*exp.(sum(x,dims=1))'
+dudx(x::AbstractMatrix) = Dim*exp.(sum(x,dims=1))'
 
 levset = x -> 1.0 #norm(x .- SVector(ntuple(i -> 0.5, Dim)))^2 - 0.25^2
 function levset_grad!(g, x)
-    g[:] = zeros(2) #2.0*x .- SVector(ntuple(i -> 1.0, Dim))
+    g[:] = zeros(Dim) #2.0*x .- SVector(ntuple(i -> 1.0, Dim))
     return nothing
 end
 
@@ -36,13 +36,13 @@ for di = 1:Dim
     bc_map[di*2] = "upwind"
 end
 
-L2err = zeros(2, 3)
+L2err = zeros(2, 4)
 
 for (dindex, degree) in enumerate(1:2)
 
     num_basis = binomial(Dim + 2*degree-1, Dim)
 
-    for (nindex, num_nodes) in enumerate([10, 20, 40].^Dim) #   [10, 20, 40].*num_basis) #, 80].*num_basis)
+    for (nindex, num_nodes) in enumerate([10, 20, 40, 80].^Dim) #   [10, 20, 40].*num_basis) #, 80].*num_basis)
 
         # use a unit HyperRectangle 
         root = Cell(SVector(ntuple(i -> 0.0, Dim)),
@@ -58,7 +58,7 @@ for (dindex, degree) in enumerate(1:2)
         
         xc = zeros(Dim, num_nodes)
         ptr = 1
-        for x in SobolSeq(Dim)
+        for x in skip(SobolSeq(Dim),num_nodes)
             if levset(x) < 0
                 continue
             end
@@ -83,17 +83,17 @@ for (dindex, degree) in enumerate(1:2)
         CutDGD.mark_cut_faces!(bfaces, levset)
 
 
-        # m = CutDGD.calc_moments!(root, levset, 2*degree-1, min(degree,2))
-        # dist_ref = ones(num_nodes)
-        # mu = 0.1
-        # max_rank = min(50, num_nodes) # was 50
-        # H_tol = ones(num_nodes)
-        # vol = 1.0
-        # H_tol .*= 0.1*vol/num_nodes #  0.5e-5
-        # xc_init = deepcopy(xc)
-        # H = CutDGD.opt_norm!(root, xc, 2*degree-1, H_tol, mu, dist_ref, 
-        #                      max_rank)
-        # println("minimum(H) = ",minimum(H))
+        m = CutDGD.calc_moments!(root, levset, 2*degree-1, min(degree,2))
+        dist_ref = ones(num_nodes)
+        mu = 0.1
+        max_rank = min(50, num_nodes) # was 50
+        H_tol = ones(num_nodes)
+        vol = 1.0
+        H_tol .*= 0.1*vol/num_nodes #  0.5e-5
+        xc_init = deepcopy(xc)
+        H = CutDGD.opt_norm!(root, xc, 2*degree-1, H_tol, mu, dist_ref, 
+                             max_rank)
+        println("minimum(H) = ",minimum(H))
 
         sbp = CutDGD.build_first_derivative(root, bc_map, ifaces, bfaces, xc, 
                                             levset, levset_grad!, degree,
