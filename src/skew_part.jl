@@ -17,7 +17,6 @@ function cell_skew_part(E, H, cell::Cell{Data, Dim, T, L}, xc, degree
 
     num_basis = binomial(Dim + degree, Dim)
     num_nodes = size(xc,2)
-
     xref = cell.data.xref 
     dx = cell.data.dx
     xc_trans = zero(xc)
@@ -31,39 +30,67 @@ function cell_skew_part(E, H, cell::Cell{Data, Dim, T, L}, xc, degree
     poly_basis!(V, degree, xc_trans, workc, Val(Dim))
     poly_basis_derivatives!(dV, degree, xc_trans, Val(Dim))
 
-    # construct the linear system that the skew matrices must satisfy 
-    num_skew_vars = div(num_nodes*(num_nodes-1),2)
-    num_eqns = num_nodes*num_basis
-    A = zeros(num_eqns, num_skew_vars)
-    B = zeros(num_eqns, Dim)
-    ptr = 0
-    for k = 1:num_basis
-        for row = 2:num_nodes 
-            offset = div((row-1)*(row-2),2)
-            for col = 1:row-1
-                A[ptr+row,offset+col] += V[col,k]
-                A[ptr+col,offset+col] -= V[row,k]
-            end 
-        end
-        for d = 1:Dim
-            # the factor of 1/dx[d] accounts for the transformation above
-            B[ptr+1:ptr+num_nodes,d] = diagm(H)*dV[:,k,d]/dx[d] - 0.5*E[:,:,d]*V[:,k]
-        end
-        ptr += num_nodes
+    B = zero(dV)
+    for d = 1:Dim 
+        B[:,:,d] = diagm(H)*dV[:,:,d]/dx[d] - 0.5*E[:,:,d]*V
     end
-    S = zeros(num_nodes, num_nodes, Dim)
-    vals = zeros(num_skew_vars)
-    for d = 1:Dim
-        solve_min_norm!(vals, A', vec(B[:,d]))
-        for row = 2:num_nodes 
-            offset = div((row-1)*(row-2),2)
-            for col = 1:row-1
-                S[row,col,d] += vals[offset+col]
-                S[col,row,d] -= vals[offset+col]
-            end
-        end
-        #println("norm(A*vals - vec(B[:,d])) = ", norm(A*vals - vec(B[:,d])))
+    F = qr(V)
+    Q = Matrix(F.Q)
+    Rinv = inv(F.R)
+    S = zero(E)
+    for d = 1:Dim 
+        S[:,:,d] = B[:,:,d]*Rinv*Q' 
+        S[:,:,d] -= S[:,:,d]'
+        S[:,:,d] += Q*Rinv'*B[:,:,d]'*Q*Q'
     end
+    
+    # # construct the linear system that the skew matrices must satisfy 
+    # num_skew_vars = div(num_nodes*(num_nodes-1),2)
+    # num_eqns = num_nodes*num_basis
+    # A = zeros(num_eqns, num_skew_vars)
+    # #rows = Int[]
+    # #cols = Int[]
+    # #Avals = Float64[]
+    # B = zeros(num_eqns, Dim)
+    # ptr = 0
+    # for k = 1:num_basis
+    #     for row = 2:num_nodes 
+    #         offset = div((row-1)*(row-2),2)
+    #         for col = 1:row-1
+    #             A[ptr+row,offset+col] += V[col,k]
+    #             A[ptr+col,offset+col] -= V[row,k]
+    #             #append!(rows, ptr+row)
+    #             #append!(cols, offset+col)
+    #             #append!(Avals, V[col,k])
+    #             #append!(rows, ptr+col)
+    #             #append!(cols, offset+col)
+    #             #append!(Avals, -V[row,k])
+    #         end 
+    #     end
+    #     for d = 1:Dim
+    #         # the factor of 1/dx[d] accounts for the transformation above
+    #         B[ptr+1:ptr+num_nodes,d] = diagm(H)*dV[:,k,d]/dx[d] - 0.5*E[:,:,d]*V[:,k]
+    #     end
+    #     ptr += num_nodes
+    # end
+    # A = sparse(A)
+    # #A = sparse(rows, cols, Avals)
+    # S = zeros(num_nodes, num_nodes, Dim)
+    # #vals = zeros(num_skew_vars)
+    # # solve for all directions simultaneously, to avoid factoring multiple times
+    # vals = A\B 
+    # for d = 1:Dim
+    #     #solve_min_norm!(vals, A', vec(B[:,d]))
+    #     #vals[:] = A\vec(B[:,d])
+    #     for row = 2:num_nodes 
+    #         offset = div((row-1)*(row-2),2)
+    #         for col = 1:row-1
+    #             S[row,col,d] += vals[offset+col,d]
+    #             S[col,row,d] -= vals[offset+col,d]
+    #         end
+    #     end
+    #     #println("norm(A*vals - vec(B[:,d])) = ", norm(A*vals - vec(B[:,d])))
+    # end
     return S
 end
 
@@ -173,7 +200,7 @@ function skew_operator(root::Cell{Data, Dim, T, L}, ifaces, xc, levset, degree;
         if is_cut(cell)
             # this cell *may* be cut; use Saye's algorithm
             Ecell = cell_symmetric_part(cell, nodes, degree, levset, fit_degree=fit_degree)
-            make_compatible!(Ecell, Hcell, cell, xc, degree)
+            make_compatible!(Ecell, Hcell, cell, nodes, degree)
         else
             # this cell is not cut
             Ecell = cell_symmetric_part(cell, nodes, degree) 

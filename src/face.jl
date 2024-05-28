@@ -251,7 +251,7 @@ end
 
 Identifies faces in the list `faces` that _may be_ cut be the level-set levset.
 """
-function mark_cut_faces!(faces, levset::LevelSet{Dim,T}) where {Dim, T}
+function mark_cut_faces!(faces, levset)
     for face in faces
         face.cut = is_cut(face.boundary, levset)
         if !face.cut && is_center_immersed(face.boundary, levset)

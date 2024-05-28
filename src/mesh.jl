@@ -70,6 +70,18 @@ function is_cut(rect::HyperRectangle{Dim,T}, levset::LevelSet{Dim,T}
     end 
 end
 
+function is_cut(rect::HyperRectangle{Dim,T}, levset::Function
+                ) where {Dim, T}
+    dx = 0.5*rect.widths
+    xc = rect.origin + dx
+    ls = levset(xc)
+    if abs(ls) > 1.1*norm(dx)
+        return false
+    else
+        return true
+    end
+end
+
 """
     cut = is_cut(cell)
 
@@ -101,12 +113,30 @@ function is_center_immersed(rect::HyperRectangle{Dim,T}, levset::LevelSet{Dim,T}
     return evallevelset(xc, levset) < 0.0 ? true : false
 end
 
+function is_center_immersed(rect::HyperRectangle{Dim,T}, levset::Function
+                            ) where {Dim, T}
+    xc = rect.origin + 0.5*rect.widths
+    return levset(xc) < 0.0 ? true : false
+end
+
 """
     mark_cut_cells!(root, levset)
 
 Identifies cells in the tree `root` that _may be_ cut be the level-set levset.
 """
 function mark_cut_cells!(root::Cell{Data, Dim, T, L}, levset::LevelSet{Dim,T}
+                         ) where {Data, Dim, T, L}
+    for cell in allleaves(root)
+        cell.data.cut = is_cut(cell.boundary, levset)
+        if !cell.data.cut && is_center_immersed(cell.boundary, levset)
+            # This cell is definitely not cut, and its center is immersed, so 
+            # entire cell must be immersed.
+            cell.data.immersed = true 
+        end
+    end
+end
+
+function mark_cut_cells!(root::Cell{Data, Dim, T, L}, levset::Function
                          ) where {Data, Dim, T, L}
     for cell in allleaves(root)
         cell.data.cut = is_cut(cell.boundary, levset)
@@ -221,7 +251,7 @@ well-conditioned Vandermonde matrix of total degree `degree`.
 function build_nn_stencils!(root, points, degree)
     kdtree = KDTree(points, leafsize = 10)
     Dim = size(points,1)
-    max_stencil_iter = degree + 1
+    max_stencil_iter = degree^2  # degree + 1
     sortres = true
     tol = 5.0
     for leaf in allleaves(root)

@@ -1,4 +1,171 @@
 
+
+"""
+    y = apply_SBP(S, E, x)
+
+Computes the product `(S + 0.5*E)*x` and returns the result.  `S` and `E` store 
+the upper (or lower) triangular parts of the SBP skew and symmetric parts,
+respectively.
+"""
+function apply_SBP(S, E, x)
+    y = zero(x)
+    rows = rowvals(S)
+    vals = nonzeros(S)
+    m, n = size(S)
+    for j = 1:n
+        for i in nzrange(S, j)
+            row = rows[i]
+            val = vals[i]
+            y[row] += val*x[j]
+            y[j] -= val*x[row]
+        end
+    end
+    rows = rowvals(E)
+    vals = nonzeros(E)
+    m, n = size(E)
+    for j = 1:n
+        for i in nzrange(E, j)
+            row = rows[i]
+            val = vals[i]
+            y[row] += 0.5*val*x[j]
+            if row != j
+                y[j] += 0.5*val*x[row]
+            end
+        end
+    end
+    return y 
+end
+
+@testset "test skew_operator: dimension $Dim, degree $degree" for Dim in 1:2, degree in 1:4
+
+    @testset "uncut domain" begin
+
+        # use a unit HyperRectangle 
+        root = Cell(SVector(ntuple(i -> 0.0, Dim)),
+                    SVector(ntuple(i -> 1.0, Dim)),
+                    CellData(Vector{Int}(), Vector{Int}()))
+
+        num_basis = binomial(Dim + 2*degree-1, Dim)
+        num_nodes = 5*num_basis
+        xc = rand(Dim, num_nodes)
+
+        # refine mesh, build stencil, get face lists
+        CutDGD.refine_on_points!(root, xc)
+        for cell in allleaves(root)
+            split!(cell, CutDGD.get_data)
+        end
+        levset = x -> 1.0
+        CutDGD.build_nn_stencils!(root, xc, 2*degree-1)
+        CutDGD.set_xref_and_dx!(root, xc)
+        m = CutDGD.calc_moments!(root, 2*degree-1)
+        ifaces = CutDGD.build_faces(root)
+        bfaces = CutDGD.build_boundary_faces(root)
+
+        # construct the norm, skew and symmetric operators 
+        H = zeros(num_nodes)
+        CutDGD.diagonal_norm!(H, root, xc, 2*degree-1)
+        S = CutDGD.skew_operator(root, ifaces, xc, levset, degree)
+        E = CutDGD.symmetric_operator(root, bfaces, xc, levset, degree)
+
+        # check that H*dV/dx = (S + 0.5*E)*V 
+        num_basis = binomial(Dim + degree, Dim)
+        V = zeros(num_nodes, num_basis)
+        CutDGD.monomial_basis!(V, degree, xc, Val(Dim))
+        dV = zeros(num_nodes, num_basis, Dim)
+        CutDGD.monomial_basis_derivatives!(dV, degree, xc, Val(Dim))
+
+        for i in axes(V,2)
+            for di = 1:Dim
+                y = apply_SBP(S[di], E[di], view(V, :, i))
+                y .-= H.*dV[:,i,di]
+                @test isapprox(norm(y), 0.0, atol=10^degree*1e-12)
+            end
+        end 
+    end
+
+    @testset "cut domain" begin
+
+        # use a unit HyperRectangle 
+        root = Cell(SVector(ntuple(i -> 0.0, Dim)),
+                    SVector(ntuple(i -> 1.0, Dim)),
+                    CellData(Vector{Int}(), Vector{Int}()))
+
+        #levset = x -> norm(x .- SVector(ntuple(i -> 0.5, Dim)))^2 - 0.25^2
+        levset = x -> 0.5 - x[1]
+
+        num_basis = binomial(Dim + 2*degree-1, Dim)
+        num_nodes = 10*num_basis
+        xc = rand(Dim, num_nodes)
+
+        xc[1,:] .*= 0.5
+        # for i in axes(xc,2)
+        #     while levset(view(xc,:,i)) < 0.0
+        #         xc[:,i] = rand(Dim)
+        #     end
+        # end
+
+        # refine mesh, build stencil, get face lists
+        CutDGD.refine_on_points!(root, xc)
+        for cell in allleaves(root)
+            split!(cell, CutDGD.get_data)
+        end
+        CutDGD.mark_cut_cells!(root, levset)
+        CutDGD.build_nn_stencils!(root, xc, 2*degree-1)
+        CutDGD.set_xref_and_dx!(root, xc)
+        m = CutDGD.calc_moments!(root, levset, 2*degree-1, min(degree,2))
+        ifaces = CutDGD.build_faces(root)
+        bfaces = CutDGD.build_boundary_faces(root)
+        CutDGD.mark_cut_faces!(ifaces, levset)
+        CutDGD.mark_cut_faces!(bfaces, levset)
+
+        # construct the norm, skew and symmetric operators 
+        H = zeros(num_nodes)
+        CutDGD.diagonal_norm!(H, root, xc, 2*degree-1)
+        S = CutDGD.skew_operator(root, ifaces, xc, levset, degree,
+                                 fit_degree=min(degree,2))
+        E = CutDGD.symmetric_operator(root, bfaces, xc, levset, degree,
+                                 fit_degree=min(degree,2))
+
+        # check that H*dV/dx = (S + 0.5*E)*V 
+        num_basis = binomial(Dim + degree, Dim)
+        V = zeros(num_nodes, num_basis)
+        CutDGD.monomial_basis!(V, degree, xc, Val(Dim))
+        dV = zeros(num_nodes, num_basis, Dim)
+        CutDGD.monomial_basis_derivatives!(dV, degree, xc, Val(Dim))
+
+        # check global compatibility 
+        for di = 1:Dim
+            y = zeros(num_nodes, num_basis)
+            rows = rowvals(E[di])
+            vals = nonzeros(E[di])
+            ~, n = size(E[di])
+            for j = 1:n
+                for i in nzrange(E[di], j)
+                    row = rows[i]
+                    val = vals[i]
+                    y[row,:] += val*V[j,:]
+                    if row != j
+                        y[j,:] += val*V[row,:]
+                    end
+                end
+            end
+            VtEV = V'*y
+            VtHdV = V'*(H.*dV[:,:,di])
+            VtHdV += VtHdV'
+            @test isapprox(norm(VtHdV - VtEV), 0.0, atol=10^degree*1e-11)
+
+        end
+
+        # for i in axes(V,2)
+        #     for di = 1:Dim
+        #         y = apply_SBP(S[di], E[di], view(V, :, i))
+        #         y .-= H.*dV[:,i,di]
+        #         @test isapprox(norm(y), 0.0, atol=10^degree*1e-11)
+        #     end
+        # end 
+    end
+end
+
 @testset "test cell_skew_part: dimension $Dim, degree $degree" for Dim in 1:3, degree in 1:4
 
     @testset "uncut cell" begin
@@ -37,7 +204,7 @@
         for d = 1:Dim
             QV = S[:,:,d]*V + 0.5*E[:,:,d]*V
             HdV = diagm(w)*dV[:,:,d]
-            @test isapprox(dot(lvec, QV*rvec), dot(lvec, HdV*rvec), atol=1e-10)
+            @test isapprox(dot(lvec, QV*rvec), dot(lvec, HdV*rvec), atol=10^degree*1e-13)
 
             #for i = 1:num_nodes 
             #    for j = 1:num_basis 
@@ -93,7 +260,7 @@
         for d = 1:Dim
             QV = S[:,:,d]*V + 0.5*E[:,:,d]*V
             HdV = diagm(w)*dV[:,:,d]
-            @test isapprox(dot(lvec, QV*rvec), dot(lvec, HdV*rvec), atol=1e-10)
+            @test isapprox(dot(lvec, QV*rvec), dot(lvec, HdV*rvec), atol=10^degree*1e-13)
 
 
             #for i = 1:num_nodes

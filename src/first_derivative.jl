@@ -77,14 +77,13 @@ function add_face_to_boundary!(bndry::BoundaryOperator{T}, face, xc, degree
                                ) where {T}
     cell = face.cell[1]
     Dim = size(xc,1)
-    @assert( length(cell.data.points) == size(xc,2), 
-            "face.cell[1] and xc are incompatible")
-    x1d, w1d = lg_nodes(degree+1)
     num_nodes = length(cell.data.points)
+    @assert( num_nodes == size(xc,2), "face.cell[1] and xc are incompatible")
+    x1d, w1d = lg_nodes(degree+1)
     num_quad = length(w1d)^(Dim-1)
     wq_face = zeros(num_quad)
     xq_face, nrm, dof, prj = push_new_face!(bndry, Dim, num_nodes, num_quad)
-    face_quadrature!(xq_face, wq_face, face.boundary, x1d, w1d, face.dir)
+    face_quadrature!(xq_face, wq_face, face.boundary, x1d, w1d, abs(face.dir))
     build_interpolation!(prj, degree, xc, xq_face, cell.data.xref, cell.data.dx)
     for (q,w) in enumerate(wq_face) 
         nrm[abs(face.dir),q] = sign(face.dir)*w 
@@ -105,11 +104,10 @@ function add_face_to_boundary!(bndry::BoundaryOperator{T}, face, xc, degree,
                                levset; fit_degree::Int=degree
                                ) where {T}
     cell = face.cell[1]
-    @assert( length(cell.data.points) == size(xc,2), 
-            "face.cell[1] and xc are incompatible")
+    num_nodes = length(cell.data.points)
+    @assert( num_nodes == size(xc,2), "face.cell[1] and xc are incompatible")
     wq_cut, xq_cut = cut_face_quad(face.boundary, face.dir, levset, degree+1,
                                      fit_degree=fit_degree)
-    num_nodes = length(cell.data.points)
     num_quad = size(xq_cut,2)
     xq_face, nrm, dof, prj = push_new_face!(bndry, Dim, num_nodes, num_quad)
     xq_face[:,:] = xq_cut[:,:]
@@ -139,16 +137,15 @@ function add_face_to_boundary!(bndry::BoundaryOperator{T},
                                cell::Cell{Data, Dim, T, L}, xc, degree, levset,
                                levset_grad!; fit_degree::Int=degree
                                ) where {Data, Dim, T, L}
-    @assert( length(cell.data.points) == size(xc,2), 
-            "cell and xc are incompatible")
+    num_nodes = length(cell.data.points)
+    @assert( num_nodes == size(xc,2), "cell and xc are incompatible")
     surf_wts, surf_pts = cut_surf_quad(cell.boundary, levset, 2*degree+1,
                                        fit_degree=fit_degree)
     num_quad = size(surf_pts,2)
     if num_quad == 0
         # Algoim may determine the cell is not actually cut
         return nothing 
-    end    
-    num_nodes = length(cell.data.points)
+    end
     xq_face, nrm, dof, prj = push_new_face!(bndry, Dim, num_nodes, num_quad)
     xq_face[:,:] = surf_pts[:,:]
     build_interpolation!(prj, degree, xc, xq_face, cell.data.xref, cell.data.dx)
