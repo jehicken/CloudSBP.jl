@@ -234,12 +234,16 @@ function build_boundary_faces(root::Cell{Data, Dim, T, L}) where {Data,Dim,T,L}
                 # This leaf is on side 2*d - 1, so add a face 
                 face = build_boundary_face(-d, leaf)
                 push!(face_list, face)
+                face_index = length(face_list)
+                push!(leaf.data.bfaces, face_index)
             end 
             if abs(leaf.boundary.origin[d] + leaf.boundary.widths[d] -
                    root.boundary.origin[d] - root.boundary.widths[d]) < 1e-14
                 # This leaf is on side 2*d, so add the appropriate face
                 face = build_boundary_face(d, leaf)
                 push!(face_list, face)
+                face_index = length(face_list)
+                push!(leaf.data.bfaces, face_index)
             end
         end
     end

@@ -163,19 +163,20 @@ function interface_skew_part(face::Face{Dim, T, Cell}, xc_left, xc_right,
 end
 
 """
-    S = skew_operator(root, ifaces, xc, levset, degree [, fit_degree=degree])
+    S = skew_operator(root, ifaces, bfaces, xc, levset, degree
+                      [, fit_degree=degree])
 
 Constructs the skew-symmetric part of a (global), first-derivative SBP 
 operator.  The integration mesh is given by `root` and `xc` defines the cloud 
 of distributed nodes where the degrees of freedom are stored.  `ifaces` is an 
-array of interfaces (not boundary faces) corresponding to `root`.  `levset` is 
-a function that defines the immersed geomtry, if any.  The skew-symmetric 
-matrix is degree `degree` exact.  Finally, `fit_degree` gives the polynomial 
-degree of the Bernstein polynomials used to approximate `levset` by the Algoim 
-library.
+array of interfaces and `bfaces` is an array of boundary faces corresponding to
+`root`.  `levset` is a function that defines the immersed geomtry, if any.  The
+skew-symmetric matrix is degree `degree` exact.  Finally, `fit_degree` gives 
+the polynomial degree of the Bernstein polynomials used to approximate `levset` 
+by the Algoim library.
 """
-function skew_operator(root::Cell{Data, Dim, T, L}, ifaces, xc, levset, degree;
-                       fit_degree::Int=degree) where {Data, Dim, T, L}
+function skew_operator(root::Cell{Data, Dim, T, L}, ifaces, bfaces, xc, levset, 
+                       degree; fit_degree::Int=degree) where {Data, Dim, T, L}
     # set up arrays to store sparse matrix information
     rows = Array{Array{Int64}}(undef, Dim)
     cols = Array{Array{Int64}}(undef, Dim)
@@ -199,7 +200,9 @@ function skew_operator(root::Cell{Data, Dim, T, L}, ifaces, xc, levset, degree;
 
         if is_cut(cell)
             # this cell *may* be cut; use Saye's algorithm
-            Ecell = cell_symmetric_part(cell, nodes, degree, levset, fit_degree=fit_degree)
+            faces = vcat(ifaces[cell.data.faces], bfaces[cell.data.bfaces])
+            Ecell = cell_symmetric_part(cell, faces, nodes, degree, levset, 
+                                        fit_degree=fit_degree)
             make_compatible!(Ecell, Hcell, cell, nodes, degree)
         else
             # this cell is not cut

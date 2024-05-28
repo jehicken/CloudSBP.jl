@@ -46,22 +46,16 @@ function push_new_face!(bndry::BoundaryOperator{T}, Dim, num_nodes, num_quad
         bndry.prj_face[end]
 end
 
-
 """
 Summation-by-parts first derivative operator
 
 `S[d]` holds the skew-symmetric part for direction `d` and `E[:]` holds `BoundaryOperator`s that define the symmetric part.
 """
 mutable struct SBP{T,Dim} #FirstDeriv{T, Dim}
-    S::SVector{Dim, SparseMatrixCSC{T, Int64}}    
-    #E::Matrix{SparseMatrixCSC{T, Int64}}
-    bnd_pts::Array{Matrix{T}}
-    bnd_nrm::Array{Matrix{T}}
-    bnd_dof::Array{Vector{Int}}
-    bnd_prj::Array{Matrix{T}}
+    H::Vector{T}
+    S::SVector{Dim, SparseMatrixCSC{T, Int64}}
+    E::Dict{String,BoundaryOperator{T}}
 end
-
-
 
 
 """
@@ -166,8 +160,8 @@ function add_face_to_boundary!(bndry::BoundaryOperator{T},
 end
 
 """
-    E = boundary_operators(bc_map, root, boundary_faces, xc, levset,
-                           levset_grad!, degree [, fit_degree=degree])
+    E = boundary_operators(root, bc_map, bfaces, xc, levset, levset_grad!, 
+                           degree [, fit_degree=degree])
 
 Generates a set of `BoundaryOperator`s for each of the `2*Dim` planar boundary
 as well as the immersed surface within the domain of the root cell `root`.
@@ -182,14 +176,14 @@ used for a planar boundaries is its side index:
 * 6 -- TOP (root.boundary.origin[3] + root.boundary.width[3])
 
 The key for the immersed surface is the string "ib".  All the planar boundary
-faces are stored in `boundary_faces`.  The DOF coordinates are given by `xc`.
-The immersed surface is defined by `levset(x) = 0`, and the gradient of this
+faces are stored in `bfaces`.  The DOF coordinates are given by `xc`. The
+immersed surface is defined by `levset(x) = 0`, and the gradient of this
 level set is `g` after calling `levset_grad!(g,x)`.  The formal polynomial
 accuracy of the boundary operator is `degree`, while `fit_degree` gives the
 degree of the Bernstein polynomial used by Algoim to fit `levset`.
 """
-function boundary_operators(bc_map, root::Cell{Data, Dim, T, L}, boundary_faces,
-                            xc, levset, levset_grad!, degree; fit_degree::Int=degree
+function boundary_operators(root::Cell{Data, Dim, T, L}, bc_map, bfaces, xc, 
+                            levset, levset_grad!, degree; fit_degree::Int=degree
                             ) where {Data, Dim, T, L}
 
     # Create a boundary operator for each unique BC
@@ -197,7 +191,7 @@ function boundary_operators(bc_map, root::Cell{Data, Dim, T, L}, boundary_faces,
     E = Dict( bc => BoundaryOperator(eltype(xc)) for bc in bc_types)
 
     # loop over all planar boundary faces.
-    for face in boundary_faces
+    for face in bfaces
         if is_immersed(face)
             continue
         end
@@ -225,55 +219,68 @@ function boundary_operators(bc_map, root::Cell{Data, Dim, T, L}, boundary_faces,
     return E
 end
 
-
-function build_boundary_operator(root::Cell{Data, Dim, T, L}, boundary_faces, 
-                                 xc, degree) where {Data, Dim, T, L}
-    num_face = length(boundary_faces)
-    bnd_nrm = Array{Matrix{T}}(undef, num_face)
-    bnd_pts = Array{Matrix{T}}(undef, num_face)
-    bnd_dof = Array{Vector{Int}}(undef, num_face)
-    bnd_prj = Array{Matrix{T}}(undef, num_face)
-
-    # find the maximum number of phi basis over all cells
-    max_basis = 0
-    for cell in allleaves(root)
-        max_basis = max(max_basis, length(cell.data.points))
-    end
-
-    x1d, w1d = lg_nodes(degree+1) # could also use lgl_nodes
-    num_quad = length(w1d)^(Dim-1)
-    wq_face = zeros(num_quad)
-    
-    #work = dgd_basis_work_array(degree, max_basis, length(wq_face), Val(Dim))
-    #work = DGDWorkSpace{T,Dim}(degree, max_basis, length(wq_face))
-
-    # loop over boundary faces 
-    for (findex, face) in enumerate(boundary_faces)
-        di = abs(face.dir)
-        # get the Gauss points on face
-        bnd_pts[findex] = zeros(Dim, num_quad)
-        face_quadrature!(bnd_pts[findex], wq_face, face.boundary, x1d, w1d, di)
-        # evaluate the basis functions on the face nodes; this defines prolong
-        num_nodes = length(face.cell[1].data.points)
-        bnd_prj[findex] = zeros(num_quad, num_nodes)
-        build_interpolation!(bnd_prj[findex], degree,
-                             view(xc, :, face.cell[1].data.points),
-                             bnd_pts[findex], face.cell[1].data.xref,
-                             face.cell[1].data.dx)
-
-        #dgd_basis!(bnd_prj[findex], degree,
-        #           view(points, :, face.cell[1].data.points),
-        #           bnd_pts[findex], work, Val(Dim))
-        # define the face normals
-        bnd_nrm[findex] = zero(bnd_pts[findex])
-        for q = 1:num_quad
-            bnd_nrm[findex][di,q] = sign(face.dir)*wq_face[q]
-        end
-        # get the degrees of freedom 
-        bnd_dof[findex] = deepcopy(face.cell[1].data.points)
-    end
-    return bnd_pts, bnd_nrm, bnd_dof, bnd_prj
+function build_first_derivative(root::Cell{Data, Dim, T, L}, bc_map, ifaces, 
+                                bfaces, xc, levset, levset_grad!, degree; 
+                                fit_degree::Int=degree
+                                ) where {Data, Dim, T, L}
+    H = zeros(size(xc,2))
+    m = calc_moments!(root, levset, 2*degree-1, fit_degree)
+    diagonal_norm!(H, root, xc, 2*degree-1)
+    S = CutDGD.skew_operator(root, ifaces, bfaces, xc, levset, degree,
+                             fit_degree=fit_degree)
+    E = boundary_operators(root, bc_map, bfaces, xc, levset, levset_grad!, 
+                           degree, fit_degree=fit_degree)
+    return SBP(H, S, E)
 end
+
+# function build_boundary_operator(root::Cell{Data, Dim, T, L}, boundary_faces, 
+#                                  xc, degree) where {Data, Dim, T, L}
+#     num_face = length(boundary_faces)
+#     bnd_nrm = Array{Matrix{T}}(undef, num_face)
+#     bnd_pts = Array{Matrix{T}}(undef, num_face)
+#     bnd_dof = Array{Vector{Int}}(undef, num_face)
+#     bnd_prj = Array{Matrix{T}}(undef, num_face)
+
+#     # find the maximum number of phi basis over all cells
+#     max_basis = 0
+#     for cell in allleaves(root)
+#         max_basis = max(max_basis, length(cell.data.points))
+#     end
+
+#     x1d, w1d = lg_nodes(degree+1) # could also use lgl_nodes
+#     num_quad = length(w1d)^(Dim-1)
+#     wq_face = zeros(num_quad)
+    
+#     #work = dgd_basis_work_array(degree, max_basis, length(wq_face), Val(Dim))
+#     #work = DGDWorkSpace{T,Dim}(degree, max_basis, length(wq_face))
+
+#     # loop over boundary faces 
+#     for (findex, face) in enumerate(boundary_faces)
+#         di = abs(face.dir)
+#         # get the Gauss points on face
+#         bnd_pts[findex] = zeros(Dim, num_quad)
+#         face_quadrature!(bnd_pts[findex], wq_face, face.boundary, x1d, w1d, di)
+#         # evaluate the basis functions on the face nodes; this defines prolong
+#         num_nodes = length(face.cell[1].data.points)
+#         bnd_prj[findex] = zeros(num_quad, num_nodes)
+#         build_interpolation!(bnd_prj[findex], degree,
+#                              view(xc, :, face.cell[1].data.points),
+#                              bnd_pts[findex], face.cell[1].data.xref,
+#                              face.cell[1].data.dx)
+
+#         #dgd_basis!(bnd_prj[findex], degree,
+#         #           view(points, :, face.cell[1].data.points),
+#         #           bnd_pts[findex], work, Val(Dim))
+#         # define the face normals
+#         bnd_nrm[findex] = zero(bnd_pts[findex])
+#         for q = 1:num_quad
+#             bnd_nrm[findex][di,q] = sign(face.dir)*wq_face[q]
+#         end
+#         # get the degrees of freedom 
+#         bnd_dof[findex] = deepcopy(face.cell[1].data.points)
+#     end
+#     return bnd_pts, bnd_nrm, bnd_dof, bnd_prj
+# end
 
 # function build_boundary_operator(root::Cell{Data, Dim, T, L}, boundary_faces, 
 #                                  points, degree) where {Data, Dim, T, L}

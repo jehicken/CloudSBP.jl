@@ -7,8 +7,10 @@ Data associated with a RegionTree `Cell`.
 mutable struct CellData
     "Indices of points in the stencil of the cell."
     points::Vector{Int}
-    "Indices of faces of the cell."
+    "Indices of interfaces of the cell."
     faces::Vector{Int}
+    "Indices of boundary faces of the cells."
+    bfaces::Vector{Int}
     "If false, cell is not cut; may or may not be cut otherwise."
     cut::Bool
     "If true, cell is not cut and its center is immersed."
@@ -21,8 +23,12 @@ mutable struct CellData
     dx::Vector{Float64} # use static array with type param?
 end
 
+function CellData(points::Vector{Int}, faces::Vector{Int}, bfaces::Vector{Int})
+    return CellData(points, faces, bfaces, false, false, [], [], [])
+end
+
 function CellData(points::Vector{Int}, faces::Vector{Int})
-    return CellData(points, faces, false, false, [], [], [])
+    return CellData(points, faces, Vector{Int}(), false, false, [], [], [])
 end
 
 """
@@ -178,8 +184,8 @@ Returns a `CellData` struct based on the given `cell`.
 """
 function get_data(cell, child_indices)
     return CellData(deepcopy(cell.data.points), 
-                    deepcopy(cell.data.faces), cell.data.cut,
-                    cell.data.immersed, [], [], [])
+                    deepcopy(cell.data.faces), deepcopy(cell.data.bfaces),
+                    cell.data.cut, cell.data.immersed, [], [], [])
 end
 
 """
@@ -224,7 +230,8 @@ Returns data for child of `cell` with `indices`.
 function refine_data(r::PointRefinery, cell::Cell, indices)
     child_bnd = child_boundary(cell, indices)
     return CellData(get_points_inside(child_bnd, r.x_view,
-                    cell.data.points), deepcopy(cell.data.faces))
+                    cell.data.points), deepcopy(cell.data.faces),
+                    deepcopy(cell.data.bfaces))
 end
 
 """
@@ -251,7 +258,7 @@ well-conditioned Vandermonde matrix of total degree `degree`.
 function build_nn_stencils!(root, points, degree)
     kdtree = KDTree(points, leafsize = 10)
     Dim = size(points,1)
-    max_stencil_iter = degree^2  # degree + 1
+    max_stencil_iter = max(1,degree^2)  # degree + 1
     sortres = true
     tol = 5.0
     for leaf in allleaves(root)
