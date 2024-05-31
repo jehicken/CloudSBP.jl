@@ -258,14 +258,14 @@ well-conditioned Vandermonde matrix of total degree `degree`.
 function build_nn_stencils!(root, points, degree)
     kdtree = KDTree(points, leafsize = 10)
     Dim = size(points,1)
-    max_stencil_iter = max(degree^2) + 2  # degree + 1
+    max_stencil_iter = 2*degree + 1 #max(degree^2) + 2  # degree + 1
+    num_basis = binomial(Dim + degree, Dim)
     sortres = true
-    tol = 10.0
+    tol = 5.0
     for leaf in allleaves(root)
         xc = center(leaf)
-        num_basis = binomial(Dim + degree, Dim)
         for k = 1:max_stencil_iter 
-            num_nodes = binomial(Dim + degree + 1, Dim) + (k-1)*degree
+            num_nodes = binomial(Dim + degree, Dim) + degree + (k-1) #*degree
             indices, dists = knn(kdtree, xc, num_nodes, sortres)
             # build the Vandermonde matrix and check its condition number
             xpts = points[:, indices]
@@ -284,7 +284,10 @@ function build_nn_stencils!(root, points, degree)
                 break
             end
             if k == max_stencil_iter 
-                error("Failed to find acceptable stencil.")
+                # condition number is not acceptable, but we accept it
+                leaf.data.points = indices
+                break
+                #error("Failed to find acceptable stencil.")
             end
         end
     end

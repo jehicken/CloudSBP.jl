@@ -37,6 +37,7 @@ include("norm.jl")
 include("symmetric_part.jl")
 include("skew_part.jl")
 include("first_derivative.jl")
+include("dissipation.jl")
 
 
 end

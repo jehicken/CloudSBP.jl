@@ -100,9 +100,10 @@ function add_face_to_boundary!(bndry::BoundaryOperator{T}, face, xc, degree,
     cell = face.cell[1]
     num_nodes = length(cell.data.points)
     @assert( num_nodes == size(xc,2), "face.cell[1] and xc are incompatible")
-    wq_cut, xq_cut = cut_face_quad(face.boundary, face.dir, levset, degree+1,
-                                     fit_degree=fit_degree)
+    wq_cut, xq_cut = cut_face_quad(face.boundary, abs(face.dir), levset,
+                                   degree+1, fit_degree=fit_degree)
     num_quad = size(xq_cut,2)
+    Dim = size(xc,1)
     xq_face, nrm, dof, prj = push_new_face!(bndry, Dim, num_nodes, num_quad)
     xq_face[:,:] = xq_cut[:,:]
     build_interpolation!(prj, degree, xc, xq_face, cell.data.xref, cell.data.dx)
@@ -232,6 +233,8 @@ function build_first_derivative(root::Cell{Data, Dim, T, L}, bc_map, ifaces,
                            degree, fit_degree=fit_degree)
     return SBP(H, S, E)
 end
+
+
 
 # function build_boundary_operator(root::Cell{Data, Dim, T, L}, boundary_faces, 
 #                                  xc, degree) where {Data, Dim, T, L}

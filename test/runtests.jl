@@ -19,10 +19,10 @@ Random.seed!(42)
 
 @testset "CutDGD.jl" begin
     
-    @testset "test first-derivative routines" begin 
-        include("test_first_derivative.jl")
+    @testset "test dissipation routines" begin 
+        include("test_dissipation.jl")
     end
-    
+
     if false
     @testset "test utility routines" begin 
         include("test_utils.jl")

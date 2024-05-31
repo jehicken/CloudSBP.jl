@@ -265,3 +265,19 @@ function mark_cut_faces!(faces, levset)
         end
     end
 end
+
+"""
+    count = number_immersed(faces)
+
+Returns the number of `faces` that are definitely immersed.  Note that this is 
+a lower bound, since the immeresed check is conservative.
+"""
+function number_immersed(faces)
+    count = 0
+    for face in faces
+        if is_immersed(face)
+            count += 1
+        end
+    end
+    return count
+end

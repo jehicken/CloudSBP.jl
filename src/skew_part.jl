@@ -140,17 +140,20 @@ indicates the degree of the Bernstein polynomials used to approximate the
 level-set within the Algoim library.
 """
 function interface_skew_part(face::Face{Dim, T, Cell}, xc_left, xc_right,
-                             degree, levset; fit_degree::Int=fit_degree
+                             degree, levset; fit_degree::Int=degree
                              ) where {Dim,T,Cell}
     wq_face, xq_face = cut_face_quad(face.boundary, face.dir, levset, degree+1,
                                      fit_degree=fit_degree)
+    Sface = zeros(size(xc_left,2), size(xc_right,2))
+    if isempty(wq_face)
+        return Sface
+    end
     interp_left = zeros(length(wq_face), size(xc_left,2))
     interp_right = zeros(length(wq_face), size(xc_right,2))
     build_interpolation!(interp_left, degree, xc_left, xq_face,
                          face.cell[1].data.xref, face.cell[1].data.dx)
     build_interpolation!(interp_right, degree, xc_right, xq_face,
                          face.cell[2].data.xref, face.cell[2].data.dx)
-    Sface = zeros(size(xc_left,2), size(xc_right,2))
     for i in axes(interp_left,2)
         for j in axes(interp_right,2)
             for (q, wq) in enumerate(wq_face)

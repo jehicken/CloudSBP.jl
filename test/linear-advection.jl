@@ -23,11 +23,23 @@ dudx(x::AbstractVector) = Dim*exp(sum(x))
 uexact(x::AbstractMatrix) = exp.(sum(x,dims=1))'
 dudx(x::AbstractMatrix) = Dim*exp.(sum(x,dims=1))'
 
-levset = x -> 1.0 #norm(x .- SVector(ntuple(i -> 0.5, Dim)))^2 - 0.25^2
+# levset = x -> 1.0 
+# function levset_grad!(g, x)
+#     g[:] = zeros(Dim)
+#     return nothing
+# end
+
+levset = x -> -x[1] + 0.5
 function levset_grad!(g, x)
-    g[:] = zeros(Dim) #2.0*x .- SVector(ntuple(i -> 1.0, Dim))
+    g[:] = [-1.0; 0.0]
     return nothing
 end
+
+# levset = x -> norm(x .- SVector(ntuple(i -> 0.5, Dim)))^2 - 0.25^2
+# function levset_grad!(g, x)
+#     g[:] = 2.0*x .- SVector(ntuple(i -> 1.0, Dim))
+#     return nothing
+# end
 
 # all boundaries have characteristic BCs applied to them
 bc_map = Dict{Any,String}("ib" => "upwind")
@@ -43,6 +55,7 @@ for (dindex, degree) in enumerate(1:2)
     num_basis = binomial(Dim + 2*degree-1, Dim)
 
     for (nindex, num_nodes) in enumerate([10, 20, 40, 80].^Dim) #   [10, 20, 40].*num_basis) #, 80].*num_basis)
+    #for (nindex, numx) in enumerate([10, 20, 40, 80])
 
         # use a unit HyperRectangle 
         root = Cell(SVector(ntuple(i -> 0.0, Dim)),
@@ -55,10 +68,10 @@ for (dindex, degree) in enumerate(1:2)
         #         xc[:,i] = rand(Dim)
         #     end
         # end
-        
+                        
         xc = zeros(Dim, num_nodes)
         ptr = 1
-        for x in skip(SobolSeq(Dim),num_nodes)
+        for x in skip(SobolSeq(Dim), 2*num_nodes)
             if levset(x) < 0
                 continue
             end
@@ -68,6 +81,25 @@ for (dindex, degree) in enumerate(1:2)
             end
             ptr += 1
         end
+
+        # # Quasi-uniform points
+        # xcart = zeros(Dim, numx^Dim)
+        # xnd = reshape(xcart, (Dim, ntuple(i -> numx, Dim)...))
+        # dx = 1/numx
+        # for I in CartesianIndices(xnd)
+        #     # I[1] is the coordinate, so I[I[1] + 1] is the index for that coord
+        #     xnd[I] = (I[I[1]+1] - 1)/numx + 0.5*dx
+        #     xnd[I] += 0.25*(2*rand()-1)*dx
+        # end
+        # num_nodes = 0
+        # xc = zeros(Dim,0)
+        # for i in axes(xcart,2)
+        #     if levset(xcart[:,i]) > 0
+        #         # lots of allocations here
+        #         xc = hcat(xc, xcart[:,i])
+        #         num_nodes += 1
+        #     end
+        # end
 
         # refine mesh, build stencil, get face lists
         CutDGD.refine_on_points!(root, xc)
@@ -82,6 +114,14 @@ for (dindex, degree) in enumerate(1:2)
         CutDGD.mark_cut_faces!(ifaces, levset)
         CutDGD.mark_cut_faces!(bfaces, levset)
 
+        for cell in allleaves(root)
+            if CutDGD.is_immersed(cell)
+                continue
+            end
+            if length(cell.data.points) <= 0
+                println("Found cell with no points assigned?")
+            end
+        end
 
         m = CutDGD.calc_moments!(root, levset, 2*degree-1, min(degree,2))
         dist_ref = ones(num_nodes)
@@ -98,6 +138,9 @@ for (dindex, degree) in enumerate(1:2)
         sbp = CutDGD.build_first_derivative(root, bc_map, ifaces, bfaces, xc, 
                                             levset, levset_grad!, degree,
                                             fit_degree=min(degree,2))
+
+        diss = CutDGD.build_dissipation(ifaces, xc, degree, levset, 
+                                        fit_degree=min(degree, 2))
 
         # Use the SBP operator to define the linear system
         A = similar(sbp.S[1] + sbp.S[1]')
@@ -141,6 +184,9 @@ for (dindex, degree) in enumerate(1:2)
             end
         end
 
+        # apply the dissipation 
+        A += (diss.R_left' - diss.R_right')*spdiagm(diss.w_face)*(diss.R_left - diss.R_right)
+
         # finally, add the MMS terms
         b += sbp.H .* dudx(xc)
 
@@ -153,7 +199,7 @@ for (dindex, degree) in enumerate(1:2)
         println("minimum(abs(H)) = ",minimum(abs.(sbp.H)))
         println("minimum(H) = ",minimum(sbp.H))
         #error("STOP")
-        #println("cond(A) = ",cond(B))
+        #println("cond(A) = ",cond(Matrix(A)))
         u = A\b 
         #u = B\b 
         du = u - uexact(xc)

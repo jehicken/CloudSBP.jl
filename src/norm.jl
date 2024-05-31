@@ -180,6 +180,10 @@ function cell_quadrature(degree, xc, moments, xref, dx, ::Val{Dim}) where {Dim}
     num_basis = binomial(Dim + degree, Dim)
     @assert( length(moments) >= num_basis, "moments has inconsistent size")
     num_nodes = size(xc, 2)
+    if num_nodes < num_basis
+        println("num_nodes = ",num_nodes)
+        println("num_basis = ",num_basis)
+    end
     @assert( num_nodes >= num_basis, "fewer nodes than basis functions")
     # apply an affine transformation to the points xc
     xc_trans = zero(xc)
