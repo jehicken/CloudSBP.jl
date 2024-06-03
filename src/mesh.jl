@@ -263,6 +263,9 @@ function build_nn_stencils!(root, points, degree)
     sortres = true
     tol = 5.0
     for leaf in allleaves(root)
+        if is_immersed(leaf)
+            continue 
+        end
         xc = center(leaf)
         for k = 1:max_stencil_iter 
             num_nodes = binomial(Dim + degree, Dim) + degree + (k-1) #*degree

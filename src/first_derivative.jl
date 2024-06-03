@@ -134,7 +134,7 @@ function add_face_to_boundary!(bndry::BoundaryOperator{T},
                                ) where {Data, Dim, T, L}
     num_nodes = length(cell.data.points)
     @assert( num_nodes == size(xc,2), "cell and xc are incompatible")
-    surf_wts, surf_pts = cut_surf_quad(cell.boundary, levset, 2*degree+1,
+    surf_wts, surf_pts = cut_surf_quad(cell.boundary, levset, degree+1,
                                        fit_degree=fit_degree)
     num_quad = size(surf_pts,2)
     if num_quad == 0
@@ -225,7 +225,7 @@ function build_first_derivative(root::Cell{Data, Dim, T, L}, bc_map, ifaces,
                                 fit_degree::Int=degree
                                 ) where {Data, Dim, T, L}
     H = zeros(size(xc,2))
-    m = calc_moments!(root, levset, 2*degree-1, fit_degree)
+    #m = calc_moments!(root, levset, 2*degree-1, fit_degree)
     diagonal_norm!(H, root, xc, 2*degree-1)
     S = CutDGD.skew_operator(root, ifaces, bfaces, xc, levset, degree,
                              fit_degree=fit_degree)
