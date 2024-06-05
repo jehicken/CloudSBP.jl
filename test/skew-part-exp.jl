@@ -4,16 +4,51 @@ using RegionTrees
 using StaticArrays: SVector, @SVector, MVector
 using LinearAlgebra
 using Random
-using LevelSets
-using CxxWrap
 using SparseArrays
 using CutQuad
 using PyPlot
 
+"""
+    y = apply_SBP(S, E, x)
+
+Computes the product `(S + 0.5*E)*x` and returns the result.  `S` and `E` store 
+the upper (or lower) triangular parts of the SBP skew and symmetric parts,
+respectively.
+"""
+function apply_SBP(S, E, x)
+    y = zero(x)
+    rows = rowvals(S)
+    vals = nonzeros(S)
+    m, n = size(S)
+    for j = 1:n
+        for i in nzrange(S, j)
+            row = rows[i]
+            val = vals[i]
+            y[row] += val*x[j]
+            y[j] -= val*x[row]
+        end
+    end
+    rows = rowvals(E)
+    vals = nonzeros(E)
+    m, n = size(E)
+    for j = 1:n
+        for i in nzrange(E, j)
+            row = rows[i]
+            val = vals[i]
+            y[row] += 0.5*val*x[j]
+            if row != j
+                y[j] += 0.5*val*x[row]
+            end
+        end
+    end
+    return y 
+end
+
+
 # Following StaticArrays approach of using repeatable "random" tests
 Random.seed!(42)
 
-Dim = 2
+Dim = 1
 degree = 2
 
 
@@ -26,7 +61,7 @@ levset = x -> norm(x .- SVector(ntuple(i -> 0.5, Dim)))^2 - 0.25^2
 #levset = x -> 0.5 - x[1]
 
 num_basis = binomial(Dim + 2*degree-1, Dim)
-num_nodes = 5*num_basis
+num_nodes = 3*num_basis
 xc = rand(Dim, num_nodes)
 
 #xc[1,:] .*= 0.5
@@ -38,9 +73,9 @@ end
 
 # refine mesh, build stencil, get face lists
 CutDGD.refine_on_points!(root, xc)
-for cell in allleaves(root)
-    split!(cell, CutDGD.get_data)
-end
+#for cell in allleaves(root)
+#    split!(cell, CutDGD.get_data)
+#end
 CutDGD.mark_cut_cells!(root, levset)
 CutDGD.build_nn_stencils!(root, xc, 2*degree-1)
 CutDGD.set_xref_and_dx!(root, xc)
@@ -96,46 +131,117 @@ x1d, w1d = CutDGD.lg_nodes(num_quad1d) # could also use lgl_nodes
 wq = zeros(length(w1d)^Dim)
 xq = zeros(Dim, length(wq))
 
+
+# check accuracy
+for i in axes(V,2)
+    for di = 1:Dim
+        y = apply_SBP(S[di], E[di], view(V, :, i))
+        y .-= H.*dV[:,i,di]
+        #@test isapprox(norm(y), 0.0, atol=10^degree*1e-11)
+        #println("norm(y) = ",norm(y))
+        println("y = ",y)
+        if i == size(V,2)
+            PyPlot.plot(vec(xc), vec(abs.(y)), "ro")
+        end
+    end
+end 
+
+
 # plot the cells
-for cell in allleaves(root)
-    if CutDGD.is_immersed(cell) 
-        continue
-    end
-    v = hcat(collect(vertices(cell.boundary))...)
-    PyPlot.plot(v[1,[1,2,4,3,1]], v[2,[1,2,4,3,1]], "-k")
-    if CutDGD.is_cut(cell)
-        wq_cut, xq_cut = cut_cell_quad(cell.boundary, levset, num_quad1d, 
-                                       fit_degree=min(degree,2))
-        PyPlot.plot(vec(xq_cut[1,:]), vec(xq_cut[2,:]), "gs")
+println("number of cells = ",CutDGD.num_leaves(root))
 
-        surf_wts, surf_pts = cut_surf_quad(cell.boundary, levset, num_quad1d,
+num_immersed = 0
+
+if Dim == 1
+
+    for cell in allleaves(root)
+        if CutDGD.is_immersed(cell) 
+            global num_immersed +=1 
+            continue
+        end
+        if CutDGD.is_cut(cell)
+            wq_cut, xq_cut = cut_cell_quad(cell.boundary, levset, num_quad1d, 
                                            fit_degree=min(degree,2))
-        PyPlot.plot(vec(surf_pts[1,:]), vec(surf_pts[2,:]), "rd")
-    else
-        CutDGD.quadrature!(xq, wq, cell.boundary, x1d, w1d)
-        PyPlot.plot(vec(xq[1,:]), vec(xq[2,:]), "bs")
+            #println("wq_cut = ",wq_cut)
+            PyPlot.plot(vec(xq_cut[1,:]), zero(vec(xq_cut[1,:])), "gs")
+    
+            surf_wts, surf_pts = cut_surf_quad(cell.boundary, levset, num_quad1d,
+                                               fit_degree=min(degree,2))
+            PyPlot.plot(vec(surf_pts[1,:]), zero(vec(surf_pts[1,:])), "gd", ms=10)
+        else
+            CutDGD.quadrature!(xq, wq, cell.boundary, x1d, w1d)
+            PyPlot.plot(vec(xq[1,:]), zero(vec(xq[1,:])), "bs")
+        end
     end
+    
+    # plot the interface quad points
+    for face in ifaces 
+        if CutDGD.is_immersed(face)
+            continue
+        end
+        if CutDGD.is_cut(face)
+            wq_face, xq_face = cut_face_quad(face.boundary, face.dir, levset,
+            num_quad1d, fit_degree=min(degree,2))
+            PyPlot.plot(vec(xq_face[1,:]), zero(xq_face[1,:]), "rd")
+        else
+            wq_face = zeros(length(w1d)^(Dim-1))
+            xq_face = zeros(Dim, length(wq_face))
+            CutDGD.face_quadrature!(xq_face, wq_face, face.boundary, x1d, w1d, face.dir)
+            PyPlot.plot(vec(xq_face[1,:]), zero(xq_face[1,:]), "bd")
+        end
+        
+    end
+
+    # plot the nodes 
+    PyPlot.plot(vec(xc[1,:]), zero(vec(xc[1,:])), "ko", ms=10, mfc="w")
+    
+else # Dim == 2
+
+    for cell in allleaves(root)
+        #vol = prod(cell.boundary.widths)
+        #println(vol)
+        v = hcat(collect(vertices(cell.boundary))...)
+        PyPlot.plot(v[1,[1,2,4,3,1]], v[2,[1,2,4,3,1]], "-k")
+        
+        if CutDGD.is_immersed(cell) 
+            global num_immersed +=1 
+            continue
+        end
+        
+        if CutDGD.is_cut(cell)
+            wq_cut, xq_cut = cut_cell_quad(cell.boundary, levset, num_quad1d, 
+            fit_degree=min(degree,2))
+            #println("wq_cut = ",wq_cut)
+            PyPlot.plot(vec(xq_cut[1,:]), vec(xq_cut[2,:]), "gs")
+            
+            surf_wts, surf_pts = cut_surf_quad(cell.boundary, levset, num_quad1d,
+            fit_degree=min(degree,2))
+            PyPlot.plot(vec(surf_pts[1,:]), vec(surf_pts[2,:]), "gd")
+        else
+            CutDGD.quadrature!(xq, wq, cell.boundary, x1d, w1d)
+            PyPlot.plot(vec(xq[1,:]), vec(xq[2,:]), "bs")
+        end
+    end
+    println("num immeresed = ",num_immersed)
+    
+    # plot the interface quad points
+    for face in ifaces 
+        if CutDGD.is_immersed(face)
+            continue
+        end
+        if CutDGD.is_cut(face)
+            wq_face, xq_face = cut_face_quad(face.boundary, face.dir, levset,
+            num_quad1d, fit_degree=min(degree,2))
+            PyPlot.plot(vec(xq_face[1,:]), vec(xq_face[2,:]), "rd")
+        else
+            wq_face = zeros(length(w1d)^(Dim-1))
+            xq_face = zeros(Dim, length(wq_face))
+            CutDGD.face_quadrature!(xq_face, wq_face, face.boundary, x1d, w1d, face.dir)
+            PyPlot.plot(vec(xq_face[1,:]), vec(xq_face[2,:]), "bd")
+        end
+        
+    end
+    
+    # plot the nodes 
+    PyPlot.plot(vec(xc[1,:]), vec(xc[2,:]), "ko", ms=10, mfc="w")
 end
-
-# plot the interface quad points
-for face in ifaces 
-    if CutDGD.is_immersed(face)
-        continue
-    end
-    if CutDGD.is_cut(face)
-        wq_face, xq_face = cut_face_quad(face.boundary, face.dir, levset,
-                                         num_quad1d, fit_degree=min(degree,2))
-        PyPlot.plot(vec(xq_face[1,:]), vec(xq_face[2,:]), "rd")
-    else
-        wq_face = zeros(length(w1d)^(Dim-1))
-        xq_face = zeros(Dim, length(wq_face))
-        CutDGD.face_quadrature!(xq_face, wq_face, face.boundary, x1d, w1d, face.dir)
-        PyPlot.plot(vec(xq_face[1,:]), vec(xq_face[2,:]), "bd")
-    end
-
-end
-
-
-# plot the nodes 
-PyPlot.plot(vec(xc[1,:]), vec(xc[2,:]), "ko", ms=10, mfc="w")
-

@@ -1,13 +1,31 @@
 module LinearAdvection
 
+# Errors (and rates) for num1d = [10, 20, 40]
+# [0.01847399040322628, 0.005660182714578662, 0.0010560672387991267]
+# [1.7065749936663819, 2.4221469323487685]
+# [0.008353629044509902, 0.0006675228977389472, 9.305909555806103e-5]
+# [3.6455138489917154, 2.842598255057037]
+# [0.0012181455375959776, 7.284281826055414e-5, 3.932054408437831e-6]
+# [4.0637559581918135, 4.211431550988428]
+# [0.0006282446057280059, 6.56196167334478e-6, 1.8107189266742027e-7]
+# [6.581055401091248, 5.179492644614094]
+
+# Errors and rates for num1d = [8, 16, 32, 64], with negative norm
+# [0.031910525975892674, 0.00876963873538268, 0.0017981930579151206, 0.0005236785433777723]
+# [1.8634430712240921, 2.285969492135909, 1.7797945203142564]
+# [0.011305476754257162, 0.0011983419467761617, 0.0001662921441020281, 0.00019563295263159158]
+# [3.2379102872185177, 2.8492477195812675, -0.23442938482123807]
+# [0.004876686553570964, 0.0002653150228556467, 1.385967054504664e-5, 2.3021442421986815e-6]
+# [4.200122974603616, 4.258741498150156, 2.5898428296005718]
+# [0.0029380991573373827, 2.8682885173368564e-5, 6.400646426565802e-7, 2.3072738462162074e-8]
+# [6.678549125605828, 5.4858287239522685, 4.793956465745432]
+
 using CutDGD
 using Test
 using RegionTrees
 using StaticArrays: SVector, @SVector, MVector
 using LinearAlgebra
 using Random
-using LevelSets
-using CxxWrap
 using SparseArrays
 using CutQuad
 using Sobol
@@ -50,13 +68,17 @@ for di = 1:Dim
     bc_map[di*2] = "upwind"
 end
 
-L2err = zeros(2, 4)
+deg = 1:4
+#num1d = [10, 20, 40]
+num1d = [8, 16, 32, 64]
 
-for (dindex, degree) in enumerate(1:2)
+L2err = zeros(length(deg), length(num1d))
+
+for (dindex, degree) in enumerate(deg)
 
     num_basis = binomial(Dim + 2*degree-1, Dim)
 
-    for (nindex, num_nodes) in enumerate([10, 20, 40, 80].^Dim) #   [10, 20, 40].*num_basis) #, 80].*num_basis)
+    for (nindex, num_nodes) in enumerate(num1d.^Dim) #   [10, 20, 40].*num_basis) #, 80].*num_basis)
     #for (nindex, numx) in enumerate([10, 20, 40, 80])
 
         # use a unit HyperRectangle 
@@ -133,7 +155,7 @@ for (dindex, degree) in enumerate(1:2)
         #m = CutDGD.calc_moments!(root, levset, 2*degree-1, min(degree,2))
         m = CutDGD.calc_moments!(root, levset, max(2,2*degree-1), 2)
         dist_ref = ones(num_nodes)
-        mu = 0.1
+        mu = 0.0 #0.1
         max_rank = min(50, num_nodes) # was 50
         H_tol = ones(num_nodes)
         vol = 1.0
@@ -219,7 +241,7 @@ for (dindex, degree) in enumerate(1:2)
 
         # solve and compute error 
         println("size(A) = ",size(A))
-        println("rank(A) = ",rank(A))
+        #println("rank(A) = ",rank(A))
         #B = Matrix(A)
         #println("B = ",B)
         #println("b = ",b)
@@ -234,14 +256,14 @@ for (dindex, degree) in enumerate(1:2)
         println("degree = ",degree,": num_nodes = ",num_nodes,": error = ",
                 L2err[dindex, nindex])
 
-        if dindex == 2 && nindex == 1
+        if dindex == 10 && nindex == 1
 
             # plot the domain and quadrature points 
             fig = figure("quad_points",figsize=(10,10))
 
-            xplot, uplot = CutDGD.output_solution(root, xc, degree, du)
-            vmin = minimum(du)
-            vmax = maximum(du)
+            xplot, uplot = CutDGD.output_solution(root, xc, degree, u)
+            vmin = minimum(u)
+            vmax = maximum(u)
             for (xp, up) in zip(xplot, uplot)
                 PyPlot.contourf(reshape(xp[1,:], (degree+1,degree+1)),
                                 reshape(xp[2,:], (degree+1,degree+1)),

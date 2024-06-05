@@ -4,26 +4,16 @@ using RegionTrees
 using StaticArrays: SVector, @SVector, MVector
 using LinearAlgebra
 using Random
-using LevelSets
-using CxxWrap
 using SparseArrays
 using CutQuad
 
 # Following StaticArrays approach of using repeatable "random" tests
 Random.seed!(42)
 
-# Need tests for the following files
-# * mass.jl 
-# * first_derivative.jl 
-
-
 @testset "CutDGD.jl" begin
-    
-    @testset "test dissipation routines" begin 
-        include("test_dissipation.jl")
-    end
 
-    if false
+    if true
+        
     @testset "test utility routines" begin 
         include("test_utils.jl")
     end
@@ -64,9 +54,9 @@ Random.seed!(42)
         include("test_first_derivative.jl")
     end
 
-    #@testset "test DGD basis routines" begin 
-    #    include("test_dgd_basis.jl")
-    #end
+    @testset "test dissipation routines" begin 
+        include("test_dissipation.jl")
+    end
 
     end
 

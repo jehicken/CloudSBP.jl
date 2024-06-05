@@ -7,9 +7,7 @@ import RegionTrees: AbstractRefinery, needs_refinement, refine_data
 using StaticArrays: SVector, @SVector
 using NearestNeighbors
 import SpecialFunctions: gamma
-using LevelSets
 using CutQuad
-using CxxWrap
 
 export CellData, Face
 

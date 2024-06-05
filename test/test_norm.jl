@@ -8,17 +8,7 @@
                 CellData(Vector{Int}(), Vector{Int}()))
 
     # define a level-set that cuts the HyperRectangle
-    num_basis = 1
-    xc = 0.5*ones(Dim, num_basis)
-    xc[1, 1] = 1/pi
-    nrm = zeros(Dim, num_basis)
-    nrm[1, 1] = 1.0 
-    tang = zeros(Dim, Dim-1, num_basis)
-    tang[:, :, 1] = nullspace(reshape(nrm[:, 1], 1, Dim))
-    crv = zeros(Dim-1, num_basis)
-    rho = 100.0*num_basis    
-    levset = LevelSet{Dim,Float64}(xc, nrm, tang, crv, rho)
-    levset_func(x) = evallevelset(x, levset)
+    levset(x) = x[1] - 1/pi
 
     # Generate some DGD dof locations used to refine the background mesh
     num_nodes = 5*binomial(Dim + degree, Dim)
@@ -28,7 +18,7 @@
     CutDGD.set_xref_and_dx!(root, points)
 
     # evaluate the moments and ...
-    m = CutDGD.calc_moments!(root, levset_func, 2*degree-1, degree)
+    m = CutDGD.calc_moments!(root, levset, 2*degree-1, degree)
 
     # ...check that (scaled) zero-order moments sum to cut-domain volume scaled
     # by the constant basis
@@ -57,24 +47,8 @@ sphere_vol(r, ::Val{1}) = 2*r
                 CellData(Vector{Int}(), Vector{Int}()))
 
     # define a level-set for a circle 
-    num_basis = 8*4^(Dim-1)
-    xc = randn(Dim, num_basis)
-    nrm = zero(xc) 
-    tang = zeros(Dim, Dim-1, num_basis)
-    crv = zeros(Dim-1, num_basis)
     R = 1/3
-    for i = 1:num_basis 
-        #theta = 2*pi*(i-1)/(num_basis-1)
-        #xc[:,i] = R*[cos(theta); sin(theta)] + [0.5;0.5]
-        #nrm[:,i] = [cos(theta); sin(theta)]
-        nrm[:,i] = xc[:,i]/norm(xc[:,i])
-        xc[:,i] = nrm[:,i]*R + 0.5*ones(Dim)
-        tang[:,:,i] = nullspace(reshape(nrm[:, i], 1, Dim))
-        crv[:,i] .= 1/R
-    end
-    rho = 100.0*(num_basis)^(1/(Dim-1))
-    levset = LevelSet{Dim,Float64}(xc, nrm, tang, crv, rho)
-    levset_func(x) = evallevelset(x, levset)
+    levset(x) = norm(x .- 0.5)^2 - R^2
 
     # Generate some DGD dof locations used to refine the background mesh
     num_nodes = 10*binomial(Dim + degree, Dim)
@@ -87,7 +61,9 @@ sphere_vol(r, ::Val{1}) = 2*r
     CutDGD.set_xref_and_dx!(root, points)
 
     # evaluate the moments and ...
-    m = CutDGD.calc_moments!(root, levset_func, 2*degree-1, degree) 
+    fit_degree = 2
+    m = CutDGD.calc_moments!(root, levset, max(fit_degree,2*degree-1),
+                             fit_degree) 
 
     # ...check that (scaled) zero-order moments sum to cut-domain volume scaled
     # by the constant basis
@@ -99,7 +75,7 @@ sphere_vol(r, ::Val{1}) = 2*r
     basis_val = 1/sqrt(tet_vol)
     vol /= basis_val
 
-    @test isapprox(vol, 1 - sphere_vol(R, Val(Dim)) , atol=0.01)
+    @test isapprox(vol, 1 - sphere_vol(R, Val(Dim)) , atol=1e-4)
 end
 
 @testset "test cell_quadrature: dimension $Dim, degree $degree" for Dim in 1:3, degree in 0:4

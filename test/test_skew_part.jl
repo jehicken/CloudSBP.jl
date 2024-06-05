@@ -316,11 +316,19 @@ end
                     SVector(ntuple(i -> 1.0, Dim)),
                     CellData(Vector{Int}(), Vector{Int}()))
 
-        levset = x -> norm(x .- SVector(ntuple(i -> 0.5, Dim)))^2 - 0.25^2
+        if Dim == 1
+            # In 1D, the mesh and level-set can coincide at two of the faces, 
+            # so this ensure we don't have two faces there
+            # TODO: need a more robust method of handling this corner case
+            R = 0.2500001
+        else
+            R = 0.25
+        end
+        levset = x -> norm(x .- SVector(ntuple(i -> 0.5, Dim)))^2 - R^2
         #levset = x -> 0.5 - x[1]
 
         num_basis = binomial(Dim + 2*degree-1, Dim)
-        num_nodes = 10*num_basis
+        num_nodes = 5*num_basis
         xc = rand(Dim, num_nodes)
 
         for i in axes(xc,2)

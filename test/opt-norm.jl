@@ -5,8 +5,6 @@ using RegionTrees
 using StaticArrays: SVector, @SVector, MVector
 using LinearAlgebra
 using Random
-using LevelSets
-using CxxWrap
 using SparseArrays
 using NearestNeighbors
 

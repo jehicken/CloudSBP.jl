@@ -46,42 +46,15 @@ end
 """
     cut = is_cut(rect, levset)
 
-Returns true if the HyperRectangle `rect` _may be_ intersected by the level-set 
-`levset`, and returns false otherwise.  The determination regarding cut or
-not-cut first uses a level-set bound, which is conservative.
-
-**Note:** The quadrature algorithm will gracefully handle elements that are 
-marked as cut but are actually not cut, so being conservative is fine.
+Returns true if the HyperRectangle `rect` is intersected by the level-set 
+`levset`, and returns false otherwise.
 """
-function is_cut(rect::HyperRectangle{Dim,T}, levset::LevelSet{Dim,T}
-                ) where {Dim, T}
-    dx = 0.5*rect.widths
-    xc = rect.origin + dx
-    ls, bound = boundlevelset(xc, dx, levset)
-    if ls*(ls - sign(ls)*bound) > 0
-        # the bound has established rect is not cut
-        return false
-    else
-        # element may be cut
-        # findclosest! either has a bug or is not robust
-        # x = zeros(Dim)
-        # if findclosest!(x, xc, levset)
-        #    L = norm(x - xc)            
-        # end
-        if abs(ls) > norm(dx)
-            # todo: this only works if ls is a true distance function
-            return false 
-        end
-        return true 
-    end 
-end
-
-function is_cut(rect::HyperRectangle{Dim,T}, levset::Function
-                ) where {Dim, T}
-    dx = 0.5*rect.widths
-    xc = rect.origin + dx
-    ls = levset(xc)
-    if abs(ls) > 1.1*norm(dx)
+function is_cut(rect::HyperRectangle{Dim,T}, levset::Function;
+                fit_degree::Int=2) where {Dim, T}
+    # This is a bit of a hack; we call Algoim and if there are no quadrature 
+    # points, we assume this cell is cut
+    wts, pts = cut_surf_quad(rect, levset, 1, fit_degree=fit_degree)
+    if isempty(wts)
         return false
     else
         return true
@@ -113,12 +86,6 @@ end
 Returns true if the **center** of `rect` is inside the level-set `levset`, that 
 is, phi(xc) < 0.0.
 """
-function is_center_immersed(rect::HyperRectangle{Dim,T}, levset::LevelSet{Dim,T}
-                     ) where {Dim, T}
-    xc = rect.origin + 0.5*rect.widths
-    return evallevelset(xc, levset) < 0.0 ? true : false
-end
-
 function is_center_immersed(rect::HyperRectangle{Dim,T}, levset::Function
                             ) where {Dim, T}
     xc = rect.origin + 0.5*rect.widths
@@ -128,20 +95,8 @@ end
 """
     mark_cut_cells!(root, levset)
 
-Identifies cells in the tree `root` that _may be_ cut be the level-set levset.
+Identifies cells in the tree `root` that _may be_ cut be the level-set `levset`.
 """
-function mark_cut_cells!(root::Cell{Data, Dim, T, L}, levset::LevelSet{Dim,T}
-                         ) where {Data, Dim, T, L}
-    for cell in allleaves(root)
-        cell.data.cut = is_cut(cell.boundary, levset)
-        if !cell.data.cut && is_center_immersed(cell.boundary, levset)
-            # This cell is definitely not cut, and its center is immersed, so 
-            # entire cell must be immersed.
-            cell.data.immersed = true 
-        end
-    end
-end
-
 function mark_cut_cells!(root::Cell{Data, Dim, T, L}, levset::Function
                          ) where {Data, Dim, T, L}
     for cell in allleaves(root)

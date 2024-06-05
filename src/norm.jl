@@ -782,7 +782,7 @@ function opt_norm!(root::Cell{Data, Dim, T, L}, xc, degree, H_tol, mu, dist_ref,
                    max_rank) where {Data, Dim, T, L}
     num_nodes = size(xc, 2)
     xc_init = copy(xc)
-    max_iter = 1000
+    max_iter = 100
     max_line = 10
     H = zeros(num_nodes)
     g = zeros(num_nodes*Dim)
