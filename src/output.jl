@@ -40,8 +40,34 @@ function output_pyplot(root::Cell{Data, Dim, T, L}, xc, degree, u;
     return xplot, uplot
 end
 
+"""
+    points_vtk(xc [, filename="points"])
+
+Writes the cloud points `xc` to the file "points.vtu".
+"""
+function points_vtk(xc; filename::String="points")
+    # create the vtk file of the cloud points 
+    vtk_points = MeshCell{VTKCellType, Vector{Int}}[]
+    for i in axes(xc,2)
+        push!(vtk_points, MeshCell(VTKCellTypes.VTK_VERTEX, [i]))
+    end
+    vtk_grid(filename, xc, vtk_points) do vtk
+        # add datasets here in the future, if needed 
+    end
+    return nothing
+end
+
+"""
+    vtk = output_vtk(root, xc, degree, u [, num_pts=degree+1,
+                     filename="solution", save=true])
+
+Creates a VTK file for a scalar solution based on the mesh in `root`, the
+points `xc`, and the solution coefficients in `u`.  The reconstruction used
+is of degree `degree`.  
+"""
 function output_vtk(root::Cell{Data, 2, T, L}, xc, degree, u;
-                    num_pts=degree+1, filename="solution") where {Data, T, L}
+                   num_pts=degree+1, filename="solution",
+                   save=true) where {Data, T, L}
     
     # count number of cells that are not immersed
     Dim = 2
@@ -73,19 +99,33 @@ function output_vtk(root::Cell{Data, 2, T, L}, xc, degree, u;
         ptr += 2^Dim
     end
     
-    # create the vtk file of the solution
-    file = vtk_grid(filename, coords, vtk_cells) do vtk
-        # add datasets...
-        vtk_point_data(vtk, data, "scalar solution")
+    # create the vtk file of the solution and write it if necessary
+    vtk = vtk_grid(filename, coords, vtk_cells) 
+    vtk_point_data(vtk, data, "scalar solution")
+    if save
+        file = vtk_save(vtk_sol)
     end
+    return vtk 
+end
 
-    # create the vtk file of the cloud points 
-    vtk_points = MeshCell{VTKCellType, Vector{Int}}[]
-    for i in axes(xc,2)
-        push!(vtk_points, MeshCell(VTKCellTypes.VTK_VERTEX, [i]))
-    end
-    file = vtk_grid("$(filename)_points", xc, vtk_points) do vtk
-    end
+"""
+    unsteady_vtk(root, xc, degree, t, sol [, num_pts=degree+1,
+                 filename="unsteady"])
 
+Writes a Paraview collection in order to visualizae an unsteady solution.  The
+solution at time `t[k]` is stored in `sol[:,k]`.  See `output_vtk` for an
+explanation of the other inputs.
+"""
+function unsteady_vtk(root::Cell{Data, 2, T, L}, xc, degree, t, sol;
+                      num_pts=degree+1, filename="unsteady") where {Data, T, L}
+    paraview_collection(filename) do pvd
+        for (k,time) in enumerate(t)
+            vtk = output_vtk(root, xc, degree, view(sol, :, k),
+                             num_pts=num_pts,
+                             filename="$(filename)_timestep_$k",
+                             save=false)
+            pvd[time] = vtk
+        end
+    end
     return nothing
 end
