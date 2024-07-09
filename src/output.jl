@@ -103,7 +103,7 @@ function output_vtk(root::Cell{Data, 2, T, L}, xc, degree, u;
     vtk = vtk_grid(filename, coords, vtk_cells) 
     vtk_point_data(vtk, data, "scalar solution")
     if save
-        file = vtk_save(vtk_sol)
+        file = vtk_save(vtk)
     end
     return vtk 
 end
