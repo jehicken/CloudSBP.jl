@@ -112,11 +112,23 @@ end
 """
     r = PointRefinery(point_subset)
 
-Used during mesh refinement; see RegionTree documentation for addiation 
-information.
+Used during mesh refinement with respect to a given point cloud; see RegionTree 
+documentation for addition information.
 """
 struct PointRefinery{T} <: AbstractRefinery
     x_view::T
+end
+
+"""
+    r = LevelSetRefinery(point_subset)
+
+Used during to refine the mesh around a given level-set.  Refines until the cut 
+cells are less than `r.min_widths` dimensions.
+"""
+struct LevelSetRefinery{T} <: AbstractRefinery
+    x_view::AbstractMatrix{T}
+    levset::Function
+    min_widths::Vector{T}
 end
 
 """
@@ -178,11 +190,38 @@ function needs_refinement(r::PointRefinery, cell)
 end
 
 """
+This method is for determining if cut cells need further refinement.
+"""
+function needs_refinement(r::LevelSetRefinery, cell)
+    if !is_cut(cell.boundary, r.levset) 
+        return false
+    end
+    # if we get here, cell is cut; check its size
+    for (w, w_min) in zip(cell.boundary.widths, r.min_widths)
+        if w > w_min
+            return true 
+        end
+    end
+    return false 
+end
+
+"""
     child_data = refine_data(r, cell, indices)
 
 Returns data for child of `cell` with `indices`.
 """
 function refine_data(r::PointRefinery, cell::Cell, indices)
+    child_bnd = child_boundary(cell, indices)
+    return CellData(get_points_inside(child_bnd, r.x_view,
+                    cell.data.points), deepcopy(cell.data.faces),
+                    deepcopy(cell.data.bfaces))
+end
+
+"""
+This method, which is identical to the above method, is used when refining 
+cells that are cut by a given levelset.
+"""
+function refine_data(r::LevelSetRefinery, cell::Cell, indices)
     child_bnd = child_boundary(cell, indices)
     return CellData(get_points_inside(child_bnd, r.x_view,
                     cell.data.points), deepcopy(cell.data.faces),
@@ -199,6 +238,21 @@ function refine_on_points!(root, points)
     root.data.points = get_points_inside(root.boundary, points)
     r = PointRefinery(view(points, :, :))
     adaptivesampling!(root, r)
+    return nothing
+end
+
+"""
+    refine_on_levelset!(root, points, levset, min_widths)
+
+Refines the leaves in `root` until each cut leaf is less than `min_widths`
+dimensions.  The array of `points` are needed so that refined leaves have the 
+necessary data.
+"""
+function refine_on_levelset!(root, points, levset, min_widths)
+    r = LevelSetRefinery(view(points, :, :), levset, min_widths)
+    for leaf in allleaves(root)
+        adaptivesampling!(leaf, r)
+    end
     return nothing
 end
 

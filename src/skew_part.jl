@@ -75,7 +75,7 @@ function cell_skew_part(E, H, cell::Cell{Data, Dim, T, L}, xc, degree
     # end
     # A = sparse(A)
     # #A = sparse(rows, cols, Avals)
-    # S = zeros(num_nodes, num_nodes, Dim)
+    # Sp = zeros(num_nodes, num_nodes, Dim)
     # #vals = zeros(num_skew_vars)
     # # solve for all directions simultaneously, to avoid factoring multiple times
     # vals = A\B 
@@ -85,12 +85,14 @@ function cell_skew_part(E, H, cell::Cell{Data, Dim, T, L}, xc, degree
     #     for row = 2:num_nodes 
     #         offset = div((row-1)*(row-2),2)
     #         for col = 1:row-1
-    #             S[row,col,d] += vals[offset+col,d]
-    #             S[col,row,d] -= vals[offset+col,d]
+    #             Sp[row,col,d] += vals[offset+col,d]
+    #             Sp[col,row,d] -= vals[offset+col,d]
     #         end
     #     end
     #     #println("norm(A*vals - vec(B[:,d])) = ", norm(A*vals - vec(B[:,d])))
     # end
+    # println("norm(S - Sp) = ",norm(S - Sp))
+
     return S
 end
 
