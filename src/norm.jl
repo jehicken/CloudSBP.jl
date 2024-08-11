@@ -384,79 +384,6 @@ function diagonal_norm_rev!(points_bar, H_bar, root::Cell{Data, Dim, T, L},
 end
 
 """
-    Z, wp = cell_null_and_part(degree, xc, xq, wq, Val(Dim))
-
-Given a quadrature rule `(xq,wq)` that is exact for polynomials of `degree` 
-degree, computes a new quadrature for the same domain based on the nodes `xc`.  
-This new rule is returned as `wp`.  Also returns the nullspace for the 
-quadrature moment matching problem.
-"""
-function cell_null_and_part(degree, xc, xq, wq, ::Val{Dim}) where {Dim}
-    @assert( size(xc,1) == size(xq,1) == Dim, "xc/xq/Dim are inconsistent")
-    @assert( size(xq,2) == size(wq,1), "xq and wq have inconsistent sizes")
-    num_basis = binomial(Dim + degree, Dim)
-    num_nodes = size(xc, 2)
-    num_quad = size(xq, 2)
-    @assert( num_nodes >= num_basis, "fewer nodes than basis functions")
-    # apply an affine transformation to the points xc and xq
-    lower = minimum([real.(xc) real.(xq)], dims=2)
-    upper = maximum([real.(xc) real.(xq)], dims=2)
-    dx = upper - lower 
-    xavg = 0.5*(upper + lower)
-    xavg .*= 0.0
-    dx[:] .*= 1.001
-    xc_trans = zero(xc)
-    for I in CartesianIndices(xc)
-        xc_trans[I] = (xc[I] - xavg[I[1]])/dx[I[1]] - 0.5
-    end
-    xq_trans = zero(xq)
-    for I in CartesianIndices(xq)
-        xq_trans[I] = (xq[I] - xavg[I[1]])/dx[I[1]] - 0.5
-    end
-    # evaluate the polynomial basis at the quadrature and node points 
-    workc = zeros((Dim+1)*num_nodes)
-    V = zeros(num_nodes, num_basis)
-    poly_basis!(V, degree, xc_trans, workc, Val(Dim))
-    workq = zeros((Dim+1)*num_quad)
-    Vq = zeros(num_quad, num_basis)
-    poly_basis!(Vq, degree, xq_trans, workq, Val(Dim))
-    # integrate the polynomial basis using the given quadrature
-    b = zeros(num_basis)
-    for i = 1:num_basis
-        b[i] = dot(Vq[:,i], wq)
-    end
-    wp = V'\b 
-    Z = nullspace(V')
-    return Z, wp 
-end
-
-"""
-    Z, wp, num_var = get_null_and_part(root, points, degree)
-
-Returns a vector of nullspaces, `Z`, and particular solutions, `wp`, for each 
-cell's quadrature problem.  Also returns the total number of degrees of freedom.
-"""
-function get_null_and_part(root::Cell{Data, Dim, T, L}, points, degree
-                           ) where {Data, Dim, T, L}
-    x1d, w1d = lg_nodes(degree+1) # could also use lgl_nodes                   
-    wq = zeros(length(w1d)^Dim)
-    xq = zeros(Dim, length(wq))                             
-    num_cell = num_leaves(root)
-    Z = Vector{Matrix{T}}(undef, num_cell)
-    wp = Vector{Vector{T}}(undef, num_cell)
-    num_var = 0
-    for (c, cell) in enumerate(allleaves(root))
-        # get the nodes in this cell's stencil, and an accurate quaduature
-        nodes = copy(points[:, cell.data.points])
-        quadrature!(xq, wq, cell.boundary, x1d, w1d)
-        # get cell quadrature and add to global norm
-        Z[c], wp[c]  = cell_null_and_part(degree, nodes, xq, wq, Val(Dim))
-        num_var += size(Z[c], 2)
-    end
-    return Z, wp, num_var
-end
-
-"""
     obj = obj_norm(root, wp, Z, y, rho, num_nodes)
 
 Compute the objective to maximize the minimum norm.  `root` is the mesh, which 
@@ -546,6 +473,17 @@ function obj_norm_grad!(g::AbstractVector{T}, root::Cell{Data, Dim, T, L},
     return nothing
 end 
 
+function smin(x)
+    delta=0.1
+    return (-x + sqrt(x^2 + delta^2))/2
+end
+
+function smin_bar(smin_bar, x)
+    delta=0.1
+    fac = sqrt(x^2 + delta^2)
+    return smin_bar*(-1.0 + x/fac)/2
+end
+
 """
     obj = penalty(root, xc, xc_init, dist_ref, H_tol, mu, degree)
 
@@ -574,9 +512,10 @@ function penalty(root::Cell{Data, Dim, T, L}, xc, xc_init, dist_ref, H_tol,
     diagonal_norm!(H, root, xc, degree)
     # and add the penalties
     for i = 1:num_nodes
-        if real(H[i]) < H_tol[i]
-            phi += 0.5*(H[i]/H_tol[i] - 1)^2
-        end 
+        phi += 0.5*smin(H[i]/H_tol[i] - 1)^2
+        #if real(H[i]) < H_tol[i]
+        #    phi += 0.5*(H[i]/H_tol[i] - 1)^2
+        #end 
     end
     return phi
 end
@@ -585,7 +524,7 @@ end
     penalty_grad!(g, root, xc, xc_init, dist_ref, H_tol, mu, degree)
 
 Computes the derivative of `penalty` with respect to `xc`.  See `penalty` for
-and explanation of the remaining parameters.
+an explanation of the remaining parameters.
 """
 function penalty_grad!(g::AbstractVector{T}, root::Cell{Data, Dim, T, L}, 
                        xc, xc_init, dist_ref, H_tol, mu, degree
@@ -602,11 +541,13 @@ function penalty_grad!(g::AbstractVector{T}, root::Cell{Data, Dim, T, L},
 
     # add the penalties    
     H_bar = zero(H)
-    for i = 1:num_nodes         
-        if real(H[i]) < H_tol[i] 
-            # phi += 0.5*(H[i]/H_tol[i] - 1)^2
-            H_bar[i] += phi_bar*(H[i]/H_tol[i] - 1)/H_tol[i]
-        end 
+    for i = 1:num_nodes
+        # phi += 0.5*smin(H[i]/H_tol[i] - 1)^2
+        H_bar[i] += smin_bar(phi_bar*smin(H[i]/H_tol[i]-1), H[i]/H_tol[i] - 1)/H_tol[i]
+        #if real(H[i]) < H_tol[i] 
+        #    # phi += 0.5*(H[i]/H_tol[i] - 1)^2
+        #    H_bar[i] += phi_bar*(H[i]/H_tol[i] - 1)/H_tol[i]
+        #end 
     end
 
     # compute the diagonal norm based on x 
@@ -717,6 +658,7 @@ function apply_approx_inverse!(p::AbstractVector{T}, g::AbstractVector{T},
         # truncate at maximum allowable rank
         sort_idx = sortperm(diag_scal)
         small_H = small_H[sort_idx[1:max_rank]]
+        #small_H = shuffle(small_H)[1:max_rank]
     end 
     # done with diag_scal's temporary use, so store actual scales
     diag_scal = 1.0./H_tol[small_H]
@@ -763,6 +705,9 @@ function apply_approx_inverse!(p::AbstractVector{T}, g::AbstractVector{T},
     # find the search direction 
     Q = Matrix(F.Q)
     p[:] = -Q *( (F.R*F.R')\(Q'*g) )
+    
+    # for directions perpendicular to Q
+    p[:] -= 0.001*(g - Q*(Q'*g))
 
     return nothing
 end
@@ -779,41 +724,53 @@ the nodes, and this approximate Jacobian is used to form an approximate inverse
 Hessian.  See `penalty` for explanations of the other parameters.
 """
 function opt_norm!(root::Cell{Data, Dim, T, L}, xc, degree, H_tol, mu, dist_ref,
-                   max_rank) where {Data, Dim, T, L}
+                   max_rank; hist_file::Union{String,Nothing}=nothing,
+                   verbose::Bool=false
+                   ) where {Data, Dim, T, L}
     num_nodes = size(xc, 2)
     xc_init = copy(xc)
-    max_iter = 100
+    max_iter = 1000
     max_line = 10
     H = zeros(num_nodes)
     g = zeros(num_nodes*Dim)
     p = zero(g) 
-    for d = 1:degree
-        println(repeat("*",80))
-        println("Starting optimization with degree = ",d)
-        if d > 1
-            H_tol[:] = 0.5*H[:]
+    if hist_file !== nothing 
+       f = open(hist_file, "w")
+       println(f,"# Norm optimization history file")
+       println(f,"# degree = $degree")
+       println(f,"# mu = $mu")
+       println(f,"# max_rank = $max_rank")
+       println(f,"#")
+       println(f,"# iter  obj  norm(g)  min(H)")
+    end
+    iter = 0
+    for d = degree:degree #1:degree
+        if verbose
+            println(repeat("*",80))
+            println("Starting optimization with degree = ",d)
         end
+        #if d > 1
+        #    H_tol[:] = 0.5*H[:]
+        #end
         for n = 1:max_iter
+            iter += 1
             obj = CutDGD.penalty(root, xc, xc_init, dist_ref, H_tol, mu, d)
             CutDGD.penalty_grad!(g, root, xc, xc_init, dist_ref, H_tol, mu, d)
-            println("\titer ",n,": obj = ",obj,": norm(grad) = ",norm(g))
             CutDGD.diagonal_norm!(H, root, xc, d)
 
             #minH = minimum(H)
             min_idx = argmin(H)
-            println("\tmin H = ",H[min_idx])
+            if hist_file !== nothing
+                println(f, "$iter  $obj  $(norm(g))  $(H[min_idx])")
+            end
+            if verbose
+                println("\titer ",iter,": obj = ",obj,": norm(grad) = ",norm(g),
+                        ": min H = ",H[min_idx])
+            end
             if H[min_idx] > 0.9*H_tol[min_idx]
                 break
             end
-            #done = true
-            #for i = 1:num_nodes 
-            #    if H[i] < 0.9*H_tol[i]
-            #        done = false
-            #    end
-            #end
-            #if done 
-            #    break
-            #end
+            
             CutDGD.apply_approx_inverse!(p, g, root, xc, dist_ref, H_tol,
                                          mu, d, max_rank)
     
@@ -823,15 +780,31 @@ function opt_norm!(root::Cell{Data, Dim, T, L}, xc, degree, H_tol, mu, dist_ref,
             for k = 1:max_line
                 xc[:,:] += alpha*dxc
                 obj = CutDGD.penalty(root, xc, xc_init, dist_ref, H_tol, mu, d)
-                println("\t\tline-search iter ",k,": alpha = ",alpha,
-                        ": obj0 = ",obj0,": obj = ",obj)
+                if verbose 
+                    println("\t\tline-search iter ",k,": alpha = ",alpha,
+                            ": obj0 = ",obj0,": obj = ",obj)
+                end
                 if obj < obj0
                     break
                 end
                 xc[:,:] -= alpha*dxc
-                alpha *= 0.1        
+                alpha *= 0.1
             end
         end
     end # degree loop
+    if hist_file !== nothing 
+        close(f)
+    end
     return H
 end
+
+function obj_slice(root::Cell{Data, Dim, T, L}, xc, degree, H_tol, mu, dist_ref,
+                   node, pert) where {Data, Dim, T, L}
+    xc_pert = copy(xc)
+    obj = zeros(size(pert,2))
+    for j in axes(pert,2)
+        xc_pert[:,node] = xc[:,node] + pert[:,j]
+        obj[j] = CutDGD.penalty(root, xc_pert, xc, dist_ref, H_tol, mu, degree)
+    end
+    return obj
+end 

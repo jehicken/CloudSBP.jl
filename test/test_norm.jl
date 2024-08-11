@@ -193,7 +193,6 @@ end
     @test isapprox(dot_prod, dot_prod_cmplx)
 end
 
-
 @testset "test diagonal_norm!: dimension $Dim, degree $degree" for Dim in 1:3, degree in 0:4
 
     # use a unit HyperRectangle 

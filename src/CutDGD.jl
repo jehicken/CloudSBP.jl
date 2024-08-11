@@ -9,6 +9,7 @@ using NearestNeighbors
 import SpecialFunctions: gamma
 using CutQuad
 using WriteVTK
+using Random
 
 export CellData, Face
 
@@ -33,6 +34,7 @@ include("quadrature.jl")
 include("dgd_basis.jl")
 include("mass.jl")
 include("norm.jl")
+include("norm_ext.jl")
 include("symmetric_part.jl")
 include("skew_part.jl")
 include("first_derivative.jl")

@@ -12,7 +12,11 @@ Random.seed!(42)
 
 @testset "CutDGD.jl" begin
 
-    if true
+    @testset "test norm extensions routines" begin
+        include("test_norm_ext.jl")
+    end
+
+    if false
         
     @testset "test utility routines" begin 
         include("test_utils.jl")

@@ -277,7 +277,7 @@ function build_nn_stencils!(root, points, degree)
         end
         xc = center(leaf)
         for k = 1:max_stencil_iter 
-            num_nodes = binomial(Dim + degree, Dim) + degree + (k-1) #*degree
+            num_nodes = binomial(Dim + degree, Dim) + div(degree + 1,2)*Dim + (k-1) #*degree
             indices, dists = knn(kdtree, xc, num_nodes, sortres)
             # build the Vandermonde matrix and check its condition number
             xpts = points[:, indices]
