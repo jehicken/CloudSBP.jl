@@ -113,3 +113,39 @@ end
 
     @test isapprox(gdotp, gdotp_cmplx)
 end
+
+@testset "test kkt_vector_product!: dimension $Dim, degree $degree" for Dim in 1:3, degree in 0:4
+
+    # use a unit HyperRectangle 
+    root = Cell(SVector(ntuple(i -> 0.0, Dim)),
+                SVector(ntuple(i -> 1.0, Dim)),
+                CellData(Vector{Int}(), Vector{Int}()))
+
+    # DGD dof locations
+    num_basis = binomial(Dim + degree, Dim)
+    num_nodes = 5*num_basis
+    points = rand(Dim, num_nodes)
+
+    # refine mesh and build stencil
+    CutDGD.refine_on_points!(root, points)
+    CutDGD.build_nn_stencils!(root, points, degree)
+    CutDGD.set_xref_and_dx!(root, points)
+    m = CutDGD.calc_moments!(root, degree)
+    wp, Z, num_vars = CutDGD.get_null_and_part(root, points, degree)
+
+    # evaluate product for random x and u
+    x = randn(num_vars + 2*num_nodes)
+    u = randn(num_vars + 2*num_nodes)
+    v = zero(u)
+    H_tol = 1e-3.*ones(num_nodes)
+    CutDGD.kkt_vector_product!(v, u, x, root, Z, H_tol)
+
+    # now compute product using complex step 
+    ceps = 1e-60
+    g = zeros(ComplexF64, length(x))
+    x_cmplx = complex.(x, ceps.*u)
+    prim, comp, feas = CutDGD.first_order_opt!(g, x_cmplx, root, wp, Z, H_tol)
+
+    v_cmplx = imag.(g)/ceps
+    @test isapprox(v, v_cmplx)
+end

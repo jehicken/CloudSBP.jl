@@ -32,7 +32,7 @@ function cell_null_and_part(degree, xc, moments, xref, dx, ::Val{Dim}) where {Di
 end
 
 """
-    wp, Z, num_var = get_null_and_part(root, xc, degree)
+    wp, Z, num_vars = get_null_and_part(root, xc, degree)
 
 Returns a vector of nullspaces, `Z`, and particular solutions, `wp`, for each 
 cell's quadrature problem.  Also returns the total number of degrees of freedom.
@@ -41,9 +41,9 @@ function get_null_and_part(root::Cell{Data, Dim, T, L}, xc, degree
                            ) where {Data, Dim, T, L}
     @assert( size(xc,1) == Dim, "xc coordinates inconsistent with Dim" )
     num_cell = num_leaves(root)
-    Z = Vector{Matrix{T}}(undef, num_cell)
-    wp = Vector{Vector{T}}(undef, num_cell)
-    num_var = 0
+    Z = [zeros(T, (0,0)) for i in 1:num_cell]
+    wp = [zeros(T, (0)) for i in 1:num_cell]
+    num_vars = 0
     for (c, cell) in enumerate(allleaves(root))
         if is_immersed(cell)
             continue
@@ -54,9 +54,9 @@ function get_null_and_part(root::Cell{Data, Dim, T, L}, xc, degree
         wp[c], Z[c] = cell_null_and_part(degree, nodes, cell.data.moments,
                                          cell.data.xref, cell.data.dx,
                                          Val(Dim))
-        num_var += size(Z[c], 2)
+        num_vars += size(Z[c], 2)
     end
-    return wp, Z, num_var
+    return wp, Z, num_vars
 end
 
 """
@@ -531,7 +531,7 @@ function positive_norm!(root::Cell{Data, Dim, T, L}, xc, degree, H_tol;
 end
 
 """
-    y, s, lam = view_kkt_vars(x, num_nodes, num_vars)
+    y, s, lam = view_vars(x, num_nodes, num_vars)
 
 Extracts views of the primal (`y`), slacks (`s`), and multipliers (`lam`) from
 the given compound vector `x`.  `num_nodes` and `num_vars` are the number of
@@ -540,7 +540,7 @@ nodes and the number of degrees of freedom, respectively.
 function view_vars(x, num_nodes, num_vars)
     @assert( length(x) == num_vars + 2*num_nodes, "length(x) is inconsistent" )
     y = view(x, 1:num_vars)
-    s = view(x, num_vars+1:num_var+num_nodes)
+    s = view(x, num_vars+1:num_vars+num_nodes)
     lam = view(x, num_vars+num_nodes+1:num_vars+2*num_nodes)
     return y, s, lam
 end
@@ -561,7 +561,7 @@ function first_order_opt!(g, x, root, wp, Z, H_tol)
     gy, gs, glam = view_vars(g, num_nodes, num_vars)
     
     gs[:] = s.*lam
-    glam[:] = s 
+    glam[:] = s .+ 1.0
     ptr = 0
     for (c, cell) in enumerate(allleaves(root))
         if is_immersed(cell)
@@ -570,8 +570,9 @@ function first_order_opt!(g, x, root, wp, Z, H_tol)
         num_dof = size(Z[c],2)
         slice = ptr+1:ptr+num_dof
         lam_c = lam[cell.data.points]
-        gy[slice] = y[slice] - Z[c]'*lam_c./H_tol[c]
-        glam[cell.data.points] -= (wp[c] - H_tol[c] + Z[c]*y[slice])./H_tol[c]
+        H_tol_c = H_tol[cell.data.points]
+        gy[slice] = y[slice] - Z[c]'*(lam_c./H_tol_c)
+        glam[cell.data.points] -= (wp[c] + Z[c]*y[slice])./H_tol_c
         ptr += num_dof
     end
     return norm(gy), norm(gs), norm(glam)
@@ -603,10 +604,11 @@ function kkt_vector_product!(v, u, x, root, Z, H_tol)
         num_dof = size(Z[c],2)
         slice = ptr+1:ptr+num_dof
         ulam_c = ulam[cell.data.points]
+        H_tol_c = H_tol[cell.data.points]
         # primal optimality
-        vy[slice] = uy[slice] - Z[c]'*ulam_c./H_tol[c]
+        vy[slice] = uy[slice] - Z[c]'*(ulam_c./H_tol_c)
         # add to constraint
-        vlam[cell.data.points] -= (Z[c]*uy[slice])./H_tol[c]
+        vlam[cell.data.points] -= (Z[c]*uy[slice])./H_tol_c
         ptr += num_dof
     end
     return nothing
@@ -637,7 +639,8 @@ function precond_interior_point!(v, u, x, root, Z, H_tol, diagZZt)
         num_dof = size(Z[c],2)
         slice = ptr+1:ptr+num_dof
         lam_c = lam[cell.data.points]
-        lam_rhs[cell.data.points] -= (lam_c/H_tol[c]).*(Z[c]*uy[slice])
+        H_tol_c = H_tol[cell.data.points]
+        lam_rhs[cell.data.points] -= (lam_c./H_tol_c).*(Z[c]*uy[slice])
         ptr += num_dof
     end
     vlam = lam_rhs./(s + lam.*diagZZt)
@@ -651,11 +654,195 @@ function precond_interior_point!(v, u, x, root, Z, H_tol, diagZZt)
         num_dof = size(Z[c],2)
         slice = ptr+1:ptr+num_dof
         vlam_c = vlam[cell.data.points]
+        H_tol_c = H_tol[cell.data.points]
         # primal optimality
-        vy[slice] = uy[slice] + (Z[c]'*vlam_c)./H_tol[c]
+        vy[slice] = uy[slice] + Z[c]'*(vlam_c./H_tol_c)
         # slack update
-        vs[cell.data.points] += (Z[c]*vy[slice])./H_tol[c]
+        vs[cell.data.points] += (Z[c]*vy[slice])./H_tol_c
         ptr += num_dof
     end
     return nothing
+end
+
+"""
+    diagZZt = compute_diag_ZZt(root, Z, H_tol)
+
+Returns the diagonal of `Z * Z^T`, with the rows of `Z` scaled by `H_tol`.
+NOTE: while ZZ^T is SPD, diag(ZZ^T) may not be. 
+"""
+function compute_diag_ZZt(root, Z, H_tol)
+    num_nodes = length(H_tol)
+    diagZZt = zeros(num_nodes)
+    for (c, cell) in enumerate(allleaves(root))
+        if is_immersed(cell)
+            continue
+        end
+        diagZZt_c = diag(Z[c]*Z[c]')./(H_tol[cell.data.points].^2)
+        diagZZt[cell.data.points] += diagZZt_c
+    end
+    for d in diagZZt
+        @assert( d > eps() )
+    end
+    return diagZZt
+end
+
+"""
+    initial_guess!(x, root, wp, Z, H_tol, diagZZt)
+
+Sets the compound vector `x` to a reasonable initial guess for the primal,
+slacks, and multipliers.  `root` defines the mesh, and `wp` and `Z` are
+(cell-based) particular and null-space solutions to the norm equations.
+`H_tol` is the tolerance for the norm at each node, and `diagZZt` is the
+diagonal part of `Z*Z^T`
+"""
+function initial_guess!(x, root, wp, Z, H_tol, diagZZt)
+    num_nodes = length(H_tol)
+    num_vars = sum(Zc -> size(Zc,2), Z)
+    fill!(x, 0.0)
+    y, s, lam = view_vars(x, num_nodes, num_vars)
+    # use s to store the right-hand side of the constraint
+    for (c, cell) in enumerate(allleaves(root))
+        if is_immersed(cell)
+            continue
+        end
+        s[cell.data.points] += wp[c]./H_tol[cell.data.points]
+    end
+    s[:] .-= 1.0 
+    # solve for slacks and multipliers
+    for i in axes(s,1)
+        b = s[i]
+        s[i] = b/(1.0 + diagZZt[i])
+        lam[i] =(s[i] - b)/diagZZt[i]
+    end
+    # solve for the primal solution
+    ptr = 0
+    for (c, cell) in enumerate(allleaves(root))
+        if is_immersed(cell)
+            continue
+        end
+        num_dof = size(Z[c],2)
+        slice = ptr+1:ptr+num_dof
+        y[slice] = -Z[c]'*s[cell.data.points]
+        ptr += num_dof
+    end
+    # enforce positivity of s and lambda
+    delta_s = max(-(1.5)*minimum(s), 0.0)
+    s[:] .+= delta_s
+    delta_lam = max(-(1.5)*minimum(lam), 0.0)
+    lam[:] .+= delta_lam
+    # move s and lambda away from zero and balance
+    s_dot_lam = dot(s, lam)
+    delta_s = 0.5*s_dot_lam/sum(lam)
+    delta_lam = 0.5*s_dot_lam/sum(s)
+    s[:] .+= delta_s
+    lam[:] .+= delta_lam
+    return nothing
+end
+
+function solve_norm(root, xc, degree, H_tol; verbose::Bool=false,
+                    max_iter::Int=100, rel_tol::Float64=1e-8, abs_tol::Float64=1e-10,
+                    max_krylov::Int=50)
+
+    # get the particular quadrature rules and null space vectors
+    wp, Z, num_vars = get_null_and_part(root, xc, degree)
+    num_nodes = length(H_tol)
+    n = num_vars + 2*num_nodes
+
+    # get memory for some vectors 
+    x = zeros(num_vars + 2*num_nodes)
+    y, s, lam = view_vars(x, num_nodes, num_vars)
+    dx = zero(x)
+    dy, ds, dlam = view_vars(dx, num_nodes, num_vars)
+    g = zero(x)
+    gy, gs, glam = view_vars(g, num_nodes, num_vars)
+
+    # get the diagonal preconditioner and a positive initial guess 
+    diagZZt = compute_diag_ZZt(root, Z, H_tol)
+    initial_guess!(x, root, wp, Z, H_tol, diagZZt)
+
+    if verbose
+        println("# iter.   opt.   comp.   feas.")
+    end
+    prim0, comp0, feas0 = 1.0, 1.0, 1.0
+    for k in 1:max_iter
+
+        # check for convergence 
+        prim, comp, feas = first_order_opt!(g, x, root, wp, Z, H_tol)
+        if verbose 
+            println("$k   $prim   $comp   $feas")
+        end
+        if k == 0
+            prim0, comp0, feas0 = prim, comp, feas
+        else 
+            # check for relative convergence 
+            if prim < prim0*rel_tol && comp < comp0*rel_tol && feas < feas0*rel_tol 
+                break
+            end
+        end
+        # check for absolute convergence 
+        if prim < abs_tol && comp < abs_tol && feas < abs_tol 
+            break
+        end
+        if k == max_iter
+            error("Interior point algorithm failed to converge")
+        end
+
+        # find the affine (Newton) step
+        A = LinearOperator(Float64, n, n, false, false, (v, u) -> 
+                           kkt_vector_product!(v, u, x, root, Z, H_tol))
+        P = LinearOperator(Float64, n, n, false, false, (v, u) ->
+                           precond_interior_point!(v, u, x, root, Z, H_tol, diagZZt))
+        g .*= -1.0
+        dx[:], stats = gmres(A, g, memory=max_krylov, atol=1e-12, rtol=1.0e-10, 
+                          verbose=Int(verbose), N=P, reorthogonalization=true)
+
+        # find mu affine and the centering parameter sigma
+        alpha_s = 1.0
+        alpha_lam = 1.0
+        for i in axes(s,1)
+            ds[i] < 0.0 ? alpha_s = min(alpha_s, -s[i]/ds[i]) : nothing
+            dlam[i] < 0.0 ? alpha_lam = min(alpha_lam, -lam[i]/dlam[i]) : nothing
+        end 
+        mu = dot(s, lam)/num_nodes # same as comp^2/num_nodes
+        mu_aff = 0.0
+        for i in axes(s,1)
+            mu_aff += (s[i] + alpha_s*ds[i])*(lam[i] + alpha_lam*dlam[i])
+        end
+        mu_aff /= num_nodes 
+        sigma = (mu_aff/mu)^3 
+        println("mu = ",mu)
+        println("mu_aff = ",mu_aff)
+        println("sigma = ",sigma)
+
+        # update the RHS of the linear system and solve again 
+        for i in axes(gs,1)
+            gs[i] -= ds[i]*dlam[i] + sigma*mu
+        end
+        dx[:], stats = gmres(A, g, memory=max_krylov, atol=1e-12, rtol=1.0e-10, 
+                          verbose=Int(verbose), N=P, reorthogonalization=true)
+        
+        # find the step lengths and update solution
+        eta = 0.9 #exp(-comp) + (1 - exp(-comp))*0.9
+        alpha_s = 1.0
+        alpha_lam = 1.0
+        for i in axes(s,1)
+            ds[i] < 0.0 ? alpha_s = min(alpha_s, -eta*s[i]/ds[i]) : nothing
+            dlam[i] < 0.0 ? alpha_lam = min(alpha_lam, -eta*lam[i]/dlam[i]) : nothing
+        end
+        y[:] += alpha_s*dy[:]
+        s[:] += alpha_s*ds[:]
+        lam[:] += alpha_lam*dlam[:]
+    end
+    # Compute the norm and update the particular solution
+    CutDGD.diagonal_norm!(H, root, wp, Z, y)
+    ptr = 0
+    for (c, cell) in enumerate(allleaves(root))
+        if is_immersed(cell)
+            continue
+        end
+        num_dof = size(Z[c],2)
+        wp[c] += Z[c]*y[ptr+1:ptr+num_dof]
+        ptr += num_dof
+    end
+    return H, wp, Z
 end
