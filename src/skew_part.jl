@@ -198,10 +198,11 @@ function skew_operator(root::Cell{Data, Dim, T, L}, ifaces, bfaces, xc, levset,
         end
         # get the nodes in this cell's stencil
         nodes = view(xc, :, cell.data.points)
-        xref = cell.data.xref 
+        xref = cell.data.xref
         dx = cell.data.dx
         moments = cell.data.moments
-        Hcell = cell_quadrature(2*degree-1, nodes, moments, xref, dx, Val(Dim))
+        #Hcell = cell_quadrature(2*degree-1, nodes, moments, xref, dx, Val(Dim))
+        Hcell = cell.data.wts
 
         if is_cut(cell)
             # this cell *may* be cut; use Saye's algorithm

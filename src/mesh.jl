@@ -21,14 +21,18 @@ mutable struct CellData
     xref::Vector{Float64} # use static array with type param?
     "Reference scaling for conditioning Vandermonde matrices"
     dx::Vector{Float64} # use static array with type param?
+    "Cell-based quadrature rule"
+    wts::Vector{Float64}
 end
 
 function CellData(points::Vector{Int}, faces::Vector{Int}, bfaces::Vector{Int})
-    return CellData(points, faces, bfaces, false, false, [], [], [])
+    return CellData(points, faces, bfaces, false, false, Float64[], Float64[],
+                    Float64[], Float64[])
 end
 
 function CellData(points::Vector{Int}, faces::Vector{Int})
-    return CellData(points, faces, Vector{Int}(), false, false, [], [], [])
+    return CellData(points, faces, Vector{Int}(), false, false, Float64[],
+                    Float64[], Float64[], Float64[])
 end
 
 """
@@ -152,7 +156,8 @@ Returns a `CellData` struct based on the given `cell`.
 function get_data(cell, child_indices)
     return CellData(deepcopy(cell.data.points), 
                     deepcopy(cell.data.faces), deepcopy(cell.data.bfaces),
-                    cell.data.cut, cell.data.immersed, [], [], [])
+                    cell.data.cut, cell.data.immersed, Float64[], Float64[], 
+                    Float64[], Float64[])
 end
 
 """
@@ -277,7 +282,7 @@ function build_nn_stencils!(root, points, degree)
         end
         xc = center(leaf)
         for k = 1:max_stencil_iter 
-            num_nodes = binomial(Dim + degree, Dim) + div(degree + 1,2)*Dim + (k-1) #*degree
+            num_nodes = binomial(Dim + degree, Dim) + k #div(degree + 1,2)*Dim + (k-1) #*degree
             indices, dists = knn(kdtree, xc, num_nodes, sortres)
             # build the Vandermonde matrix and check its condition number
             xpts = points[:, indices]
@@ -302,6 +307,28 @@ function build_nn_stencils!(root, points, degree)
                 #error("Failed to find acceptable stencil.")
             end
         end
+    end
+    return nothing
+end
+
+function extend_stencils!(root, points, H, H_tol)
+    kdtree = KDTree(points, leafsize = 10)
+    Dim = size(points,1)
+    sortres = true
+    for leaf in allleaves(root)
+        if is_immersed(leaf)
+            continue 
+        end
+        Hc = view(H, leaf.data.points)
+        Hc_tol = view(H_tol, leaf.data.points)
+        if all(Hc .>= Hc_tol)
+            continue 
+        end
+        # if we get here, at least one node's norm violates its constraint
+        xc = center(leaf)
+        num_nodes = length(leaf.data.points) + 1
+        indices, dists = knn(kdtree, xc, num_nodes, sortres)
+        leaf.data.points = indices
     end
     return nothing
 end

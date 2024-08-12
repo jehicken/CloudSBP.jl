@@ -744,7 +744,7 @@ function opt_norm!(root::Cell{Data, Dim, T, L}, xc, degree, H_tol, mu, dist_ref,
        println(f,"# iter  obj  norm(g)  min(H)")
     end
     iter = 0
-    for d = degree:degree #1:degree
+    for d = 1:degree
         if verbose
             println(repeat("*",80))
             println("Starting optimization with degree = ",d)

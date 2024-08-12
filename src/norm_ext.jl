@@ -88,6 +88,19 @@ function diagonal_norm!(H, root::Cell{Data, Dim, T, L}, wp, Z, y
    return H
 end
 
+function diagonal_norm!(H, root)
+    for (c, cell) in enumerate(allleaves(root))
+        if is_immersed(cell)
+            continue
+        end
+        # add the local contribution
+        for i = 1:length(cell.data.points)            
+            H[cell.data.points[i]] += cell.data.wts[i]
+        end
+   end
+   return nothing
+end
+
 """
     diagonal_norm_rev!(y_bar, H_bar, root, Z)
 
@@ -845,4 +858,73 @@ function solve_norm(root, xc, degree, H_tol; verbose::Bool=false,
         ptr += num_dof
     end
     return H, wp, Z
+end
+
+function compute_sparse_constraint(root, wp, Z, H_tol)
+    num_nodes = length(H_tol)
+    rows = Int[]
+    cols = Int[]
+    Avals = Float64[]
+    b = zeros(num_nodes)
+    ptr = 0
+    for (c, cell) in enumerate(allleaves(root))
+        if is_immersed(cell)
+            continue
+        end
+        for i in axes(Z[c],1)
+            for j in axes(Z[c],2)
+                append!(rows, cell.data.points[i])
+                append!(cols, ptr+j)
+                append!(Avals, Z[c][i,j])
+            end
+            b[cell.data.points[i]] -= wp[c][i]
+        end
+        ptr += size(Z[c],2)
+    end
+    b[:] += H_tol
+    return sparse(rows, cols, Avals), b
+end
+
+function solve_norm!(root, xc, degree, H_tol; verbose::Bool=false)
+
+    H = zero(H_tol)
+
+    # get the particular quadrature rules and null space vectors
+    wp, Z, num_vars = get_null_and_part(root, xc, degree)
+    num_nodes = length(H_tol)
+    n = num_vars + 2*num_nodes
+    y = zeros(num_vars)
+
+    # get the sparse constraint, A*y >= b
+    A, b = compute_sparse_constraint(root, wp, Z, H_tol)
+
+    # set up the optimization problem
+    model = Model(Tulip.Optimizer)
+    set_attribute(model, "IPM_IterationsLimit", 20)
+    if verbose
+        set_attribute(model, "OutputLevel", 1)
+    end
+    @variable(model, y[1:num_vars])
+    @objective(model, Min, 0.0)
+    @constraint(model, A*y >= b)
+    optimize!(model)
+    #println("Problem solved and feasible? ",is_solved_and_feasible(model))
+    #solution_summary(model)
+    y = value.(y)
+    success = true
+    if !is_solved_and_feasible(model)
+        y .= 0.0
+        success = false
+    end
+    ptr = 0
+    for (c, cell) in enumerate(allleaves(root))
+        if is_immersed(cell)
+            continue
+        end
+        num_dof = size(Z[c],2)
+        cell.data.wts = wp[c] + Z[c]*y[ptr+1:ptr+num_dof]
+        ptr += num_dof
+    end
+    CutDGD.diagonal_norm!(H, root)
+    return H, success
 end

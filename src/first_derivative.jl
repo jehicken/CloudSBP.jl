@@ -226,7 +226,8 @@ function build_first_derivative(root::Cell{Data, Dim, T, L}, bc_map, ifaces,
                                 ) where {Data, Dim, T, L}
     H = zeros(size(xc,2))
     #m = calc_moments!(root, levset, 2*degree-1, fit_degree)
-    diagonal_norm!(H, root, xc, 2*degree-1)
+    #diagonal_norm!(H, root, xc, 2*degree-1)
+    diagonal_norm!(H, root)
     S = CutDGD.skew_operator(root, ifaces, bfaces, xc, levset, degree,
                              fit_degree=fit_degree)
     E = boundary_operators(root, bc_map, bfaces, xc, levset, levset_grad!, 

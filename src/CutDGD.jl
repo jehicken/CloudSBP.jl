@@ -10,7 +10,8 @@ import SpecialFunctions: gamma
 using CutQuad
 using WriteVTK
 using Random
-using LinearOperators, Krylov
+#using LinearOperators, Krylov
+using Tulip, JuMP
 
 export CellData, Face
 
