@@ -2,7 +2,7 @@
 
 @testset "test proriol_poly in two dimensions" begin
     degree = 4
-    x1d, w1d = CutDGD.lg_nodes(degree+1)
+    x1d, w1d = CloudSBP.lg_nodes(degree+1)
     # compute Gauss-Legendre quadrature points for a degenerate square
     ptr = 1
     wq = zeros(length(x1d)^2)
@@ -23,7 +23,7 @@
     for r = 0:degree
         for j = 0:r
             i = r-j                    
-            CutDGD.proriol_poly!(view(P, :, ptr), xq[1,:], xq[2,:], i, j, work)
+            CloudSBP.proriol_poly!(view(P, :, ptr), xq[1,:], xq[2,:], i, j, work)
             ptr += 1
         end
     end
@@ -31,14 +31,14 @@
     innerprod = P'*diagm(wq)*P
     @test isapprox(innerprod, Matrix(1.0I, num_basis, num_basis))
     # this should also work with poly_basis!
-    CutDGD.poly_basis!(P, degree, xq, work, Val(2))
+    CloudSBP.poly_basis!(P, degree, xq, work, Val(2))
     innerprod = P'*diagm(wq)*P
     @test isapprox(innerprod, Matrix(1.0I, num_basis, num_basis))
 end
 
 @testset "test proriol_poly in three dimensions" begin
     degree = 4 
-    x1d, w1d = CutDGD.lg_nodes(2*degree)
+    x1d, w1d = CloudSBP.lg_nodes(2*degree)
     # compute Gauss-Legendre quadrature points for a degenerate cube
     ptr = 1
     wq = zeros(length(x1d)^3)
@@ -64,7 +64,7 @@ end
         for k = 0:r
             for j = 0:r-k
                 i = r-j-k
-                CutDGD.proriol_poly!(view(P, :, ptr), xq[1,:], xq[2,:],
+                CloudSBP.proriol_poly!(view(P, :, ptr), xq[1,:], xq[2,:],
                                      xq[3,:], i, j, k, work)
                 ptr += 1
             end
@@ -74,14 +74,14 @@ end
     innerprod = P'*diagm(wq)*P
     @test isapprox(innerprod, Matrix(1.0I, num_basis, num_basis))
     # this should also work with poly_basis!
-    CutDGD.poly_basis!(P, degree, xq, work, Val(3))
+    CloudSBP.poly_basis!(P, degree, xq, work, Val(3))
     innerprod = P'*diagm(wq)*P
     @test isapprox(innerprod, Matrix(1.0I, num_basis, num_basis))
 end
 
 @testset "test diff_proriol_poly! in two dimension" begin
     degree = 4
-    x1d, w1d = CutDGD.lg_nodes(degree+1)
+    x1d, w1d = CloudSBP.lg_nodes(degree+1)
     # compute Gauss-Legendre quadrature points for a degenerate square
     ptr = 1
     x = zeros(2, length(x1d)^2)
@@ -94,7 +94,7 @@ end
     end
     
     dV = zeros(size(x,2), binomial(degree+2,2), 2)
-    CutDGD.poly_basis_derivatives!(dV, degree, x, Val(2))
+    CloudSBP.poly_basis_derivatives!(dV, degree, x, Val(2))
     # test the derivatives using the copmlex-step method 
     eps_step = 1e-60
     num_basis = binomial(degree + 2, 2)
@@ -106,14 +106,14 @@ end
     for r = 0:degree
         for j = 0:r
             i = r-j
-            CutDGD.diff_proriol_poly!(dP, view(x,1,:), view(x,2,:), i, j)
+            CloudSBP.diff_proriol_poly!(dP, view(x,1,:), view(x,2,:), i, j)
             xc[:,:] = x[:,:]
             xc[2,:] .-= complex(0.0, eps_step)
-            CutDGD.proriol_poly!(Pc, view(xc,1,:), view(xc,2,:), i, j, work)
+            CloudSBP.proriol_poly!(Pc, view(xc,1,:), view(xc,2,:), i, j, work)
             @test isapprox(-imag(Pc)/eps_step, dP[:,2], atol=1e-13)
             @test isapprox(-imag(Pc)/eps_step, dV[:,ptr,2], atol=1e-13)
             xc[1,:] .-= complex(0.0, eps_step)
-            CutDGD.proriol_poly!(Pc, view(xc,1,:), view(xc,2,:), i, j, work)
+            CloudSBP.proriol_poly!(Pc, view(xc,1,:), view(xc,2,:), i, j, work)
             @test isapprox(-imag(Pc)/eps_step - dP[:,2], dP[:,1], atol=1e-13)
             @test isapprox(-imag(Pc)/eps_step - dP[:,2], dV[:,ptr,1],
                            atol=1e-13)

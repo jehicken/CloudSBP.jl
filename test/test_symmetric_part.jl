@@ -10,26 +10,26 @@
     num_basis = binomial(Dim + degree, Dim)
     num_nodes = num_basis + 1
     xc = randn(Dim, num_nodes)
-    CutDGD.set_xref_and_dx!(cell, xc)
+    CloudSBP.set_xref_and_dx!(cell, xc)
 
     # get the boundary operator 
-    E = CutDGD.cell_symmetric_part(cell, xc, degree)
+    E = CloudSBP.cell_symmetric_part(cell, xc, degree)
 
     # get quadrature points for the cell; these are used to integrate derivatives of the 
     # boundary integrands using the divergence theorem.
-    x1d, w1d = CutDGD.lg_nodes(degree+1) # could also use lgl_nodes
+    x1d, w1d = CloudSBP.lg_nodes(degree+1) # could also use lgl_nodes
     num_quad = length(w1d)^Dim
     wq = zeros(num_quad)
     xq = zeros(Dim, num_quad)
-    CutDGD.quadrature!(xq, wq, cell.boundary, x1d, w1d)
+    CloudSBP.quadrature!(xq, wq, cell.boundary, x1d, w1d)
 
     # evaluate the monomial basis at the point cloud and quadrature points 
     V = zeros(num_nodes, num_basis)
-    CutDGD.monomial_basis!(V, degree, xc, Val(Dim))
+    CloudSBP.monomial_basis!(V, degree, xc, Val(Dim))
     Vq = zeros(num_quad, num_basis)
-    CutDGD.monomial_basis!(Vq, degree, xq, Val(Dim))
+    CloudSBP.monomial_basis!(Vq, degree, xq, Val(Dim))
     dVq = zeros(num_quad, num_basis, Dim)
-    CutDGD.monomial_basis_derivatives!(dVq, degree, xq, Val(Dim))
+    CloudSBP.monomial_basis_derivatives!(dVq, degree, xq, Val(Dim))
 
     # multiply by random vector to reduce the number of tests 
     lvec = randn(num_basis)
@@ -55,10 +55,10 @@ end
         num_basis = binomial(Dim + degree, Dim)
         num_nodes = binomial(Dim + degree + 1, Dim)
         xc = randn(Dim, num_nodes)
-        CutDGD.set_xref_and_dx!(cell, xc)
+        CloudSBP.set_xref_and_dx!(cell, xc)
 
         # get the boundary operator 
-        E = CutDGD.cell_symmetric_part(cell, xc, degree, levset)
+        E = CloudSBP.cell_symmetric_part(cell, xc, degree, levset)
 
         # get quadrature points for the cell using Saye's algorithm directly;
         # these are used to integrate derivatives of the boundary integrands
@@ -68,11 +68,11 @@ end
 
         # evaluate the monomial basis at the point cloud and quadrature points 
         V = zeros(num_nodes, num_basis)
-        CutDGD.monomial_basis!(V, degree, xc, Val(Dim))
+        CloudSBP.monomial_basis!(V, degree, xc, Val(Dim))
         Vq = zeros(num_quad, num_basis)
-        CutDGD.monomial_basis!(Vq, degree, xq, Val(Dim))
+        CloudSBP.monomial_basis!(Vq, degree, xq, Val(Dim))
         dVq = zeros(num_quad, num_basis, Dim)
-        CutDGD.monomial_basis_derivatives!(dVq, degree, xq, Val(Dim))
+        CloudSBP.monomial_basis_derivatives!(dVq, degree, xq, Val(Dim))
 
         for di = 1:Dim
             for p = 1:num_basis
@@ -99,7 +99,7 @@ end
         num_basis = binomial(Dim + degree, Dim)
         num_nodes = binomial(Dim + degree + 1, Dim)
         xc = randn(Dim, num_nodes)
-        CutDGD.set_xref_and_dx!(cell, xc)
+        CloudSBP.set_xref_and_dx!(cell, xc)
         work = zeros(2)
         lval = zeros(1)
         xval = zeros(1)
@@ -109,16 +109,16 @@ end
 
             # define the degree j level-set 
             xval[1] = 1.0
-            CutDGD.jacobi_poly!(lval, xval, 0.0, 0.0, j, work)
+            CloudSBP.jacobi_poly!(lval, xval, 0.0, 0.0, j, work)
             fac = 1/lval[1]
             function levset(x)
                 xval[1] = x[1]
-                CutDGD.jacobi_poly!(lval, xval, 0.0, 0.0, j, work)
+                CloudSBP.jacobi_poly!(lval, xval, 0.0, 0.0, j, work)
                 return lval[1]*fac - x[2]
             end 
 
             # get the boundary operator 
-            E = CutDGD.cell_symmetric_part(cell, xc, degree, levset)
+            E = CloudSBP.cell_symmetric_part(cell, xc, degree, levset)
 
             # get quadrature points for the cell using Saye's algorithm directly;
             # these are used to integrate derivatives of the boundary integrands
@@ -129,8 +129,8 @@ end
             # define the function begin integrated 
             V = zeros(num_nodes)
             Vwork = zeros(2*num_nodes)
-            CutDGD.jacobi_poly!(V, view(xc,1,:), 0.0, 0.0, i, Vwork)
-            dVq = CutDGD.diff_jacobi_poly(view(xq,1,:), 0.0, 0.0, i)
+            CloudSBP.jacobi_poly!(V, view(xc,1,:), 0.0, 0.0, i, Vwork)
+            dVq = CloudSBP.diff_jacobi_poly(view(xq,1,:), 0.0, 0.0, i)
 
             integral = ones(num_nodes)'*E[:,:,1]*V
             ref_value = dot(wq, dVq)
@@ -152,7 +152,7 @@ end
         num_basis = binomial(Dim + degree, Dim)
         num_nodes = binomial(Dim + degree + 1, Dim)
         xc = randn(Dim, num_nodes)
-        CutDGD.set_xref_and_dx!(cell, xc)
+        CloudSBP.set_xref_and_dx!(cell, xc)
         work = zeros(3)
         lval = zeros(1)
         xval = zeros(2)
@@ -162,19 +162,19 @@ end
 
                 # define the degree `2*degree -i - j` level set 
                 xval[:] = [1.0; 1.0]
-                CutDGD.jacobi_poly!(lval, view(xval,1:1), 0.0, 0.0, degree-i, work)
+                CloudSBP.jacobi_poly!(lval, view(xval,1:1), 0.0, 0.0, degree-i, work)
                 lx = lval[1] 
-                CutDGD.jacobi_poly!(lval, view(xval,2:2), 0.0, 0.0, degree-j, work)
+                CloudSBP.jacobi_poly!(lval, view(xval,2:2), 0.0, 0.0, degree-j, work)
                 fac = 1/(lx*lval[1])
                 function levset(x)
-                    CutDGD.jacobi_poly!(lval, view(x,1:1), 0.0, 0.0, degree-i, work)
+                    CloudSBP.jacobi_poly!(lval, view(x,1:1), 0.0, 0.0, degree-i, work)
                     lx = lval[1] 
-                    CutDGD.jacobi_poly!(lval, view(x,2:2), 0.0, 0.0, degree-j, work)
+                    CloudSBP.jacobi_poly!(lval, view(x,2:2), 0.0, 0.0, degree-j, work)
                     return lx*lval[1]*fac - x[3]
                 end
 
                 # get the boundary operator
-                E = CutDGD.cell_symmetric_part(cell, xc, degree, levset)
+                E = CloudSBP.cell_symmetric_part(cell, xc, degree, levset)
 
                 # get quadrature points for the cell using Saye's algorithm directly;
                 # these are used to integrate derivatives of the boundary integrands
@@ -186,18 +186,18 @@ end
                 Vx = zeros(num_nodes)
                 Vy = zero(Vx)
                 Vwork = zeros(3*num_nodes)
-                CutDGD.jacobi_poly!(Vx, view(xc,1,:), 0.0, 0.0, i, Vwork)
-                CutDGD.jacobi_poly!(Vy, view(xc,2,:), 0.0, 0.0, j, Vwork)
+                CloudSBP.jacobi_poly!(Vx, view(xc,1,:), 0.0, 0.0, i, Vwork)
+                CloudSBP.jacobi_poly!(Vy, view(xc,2,:), 0.0, 0.0, j, Vwork)
 
                 Vqx = zeros(num_quad)
                 Vqy = zero(Vqx)
                 Vqwork = zeros(3*num_quad)
                 dVqx = zero(Vqx)
                 dVqy = zero(Vqx)
-                CutDGD.jacobi_poly!(Vqx, view(xq,1,:), 0.0, 0.0, i, Vqwork)
-                CutDGD.jacobi_poly!(Vqy, view(xq,2,:), 0.0, 0.0, j, Vqwork)
-                dVqx = CutDGD.diff_jacobi_poly(view(xq,1,:), 0.0, 0.0, i)
-                dVqy = CutDGD.diff_jacobi_poly(view(xq,2,:), 0.0, 0.0, j)
+                CloudSBP.jacobi_poly!(Vqx, view(xq,1,:), 0.0, 0.0, i, Vqwork)
+                CloudSBP.jacobi_poly!(Vqy, view(xq,2,:), 0.0, 0.0, j, Vqwork)
+                dVqx = CloudSBP.diff_jacobi_poly(view(xq,1,:), 0.0, 0.0, i)
+                dVqy = CloudSBP.diff_jacobi_poly(view(xq,2,:), 0.0, 0.0, j)
                 dVq = zeros(num_quad,2) 
                 dVq[:,1] = dVqx.*Vqy 
                 dVq[:,2] = Vqx.*dVqy 
@@ -222,32 +222,32 @@ end
                 SVector(ntuple(i -> 1.0, Dim)),
                 CellData(Vector{Int}(), Vector{Int}()))
 
-    bfaces = CutDGD.build_boundary_faces(cell)
+    bfaces = CloudSBP.build_boundary_faces(cell)
 
     # create a point cloud 
     num_basis = binomial(Dim + degree, Dim)
     num_nodes = num_basis + 1
     xc = randn(Dim, num_nodes)
-    CutDGD.set_xref_and_dx!(cell, xc)
+    CloudSBP.set_xref_and_dx!(cell, xc)
 
     # get the boundary operator 
-    E = CutDGD.cell_symmetric_part(cell, bfaces, xc, degree)
+    E = CloudSBP.cell_symmetric_part(cell, bfaces, xc, degree)
 
     # get quadrature points for the cell; these are used to integrate derivatives of the 
     # boundary integrands using the divergence theorem.
-    x1d, w1d = CutDGD.lg_nodes(degree+1) # could also use lgl_nodes
+    x1d, w1d = CloudSBP.lg_nodes(degree+1) # could also use lgl_nodes
     num_quad = length(w1d)^Dim
     wq = zeros(num_quad)
     xq = zeros(Dim, num_quad)
-    CutDGD.quadrature!(xq, wq, cell.boundary, x1d, w1d)
+    CloudSBP.quadrature!(xq, wq, cell.boundary, x1d, w1d)
 
     # evaluate the monomial basis at the point cloud and quadrature points 
     V = zeros(num_nodes, num_basis)
-    CutDGD.monomial_basis!(V, degree, xc, Val(Dim))
+    CloudSBP.monomial_basis!(V, degree, xc, Val(Dim))
     Vq = zeros(num_quad, num_basis)
-    CutDGD.monomial_basis!(Vq, degree, xq, Val(Dim))
+    CloudSBP.monomial_basis!(Vq, degree, xq, Val(Dim))
     dVq = zeros(num_quad, num_basis, Dim)
-    CutDGD.monomial_basis_derivatives!(dVq, degree, xq, Val(Dim))
+    CloudSBP.monomial_basis_derivatives!(dVq, degree, xq, Val(Dim))
 
     # multiply by random vector to reduce the number of tests 
     lvec = randn(num_basis)
@@ -268,16 +268,16 @@ end
         cell = Cell(SVector{1}([-0.5]), SVector{1}([1.0]),
                     CellData(Vector{Int}(), Vector{Int}()))
         levset = x -> (x[1] + 0.5)^2 - 0.25
-        bfaces = CutDGD.build_boundary_faces(cell)
+        bfaces = CloudSBP.build_boundary_faces(cell)
 
         # create a point cloud 
         num_basis = binomial(Dim + degree, Dim)
         num_nodes = binomial(Dim + degree + 1, Dim)
         xc = randn(Dim, num_nodes)
-        CutDGD.set_xref_and_dx!(cell, xc)
+        CloudSBP.set_xref_and_dx!(cell, xc)
 
         # get the boundary operator 
-        E = CutDGD.cell_symmetric_part(cell, bfaces, xc, degree, levset)
+        E = CloudSBP.cell_symmetric_part(cell, bfaces, xc, degree, levset)
 
         # get quadrature points for the cell using Saye's algorithm directly;
         # these are used to integrate derivatives of the boundary integrands
@@ -287,11 +287,11 @@ end
 
         # evaluate the monomial basis at the point cloud and quadrature points 
         V = zeros(num_nodes, num_basis)
-        CutDGD.monomial_basis!(V, degree, xc, Val(Dim))
+        CloudSBP.monomial_basis!(V, degree, xc, Val(Dim))
         Vq = zeros(num_quad, num_basis)
-        CutDGD.monomial_basis!(Vq, degree, xq, Val(Dim))
+        CloudSBP.monomial_basis!(Vq, degree, xq, Val(Dim))
         dVq = zeros(num_quad, num_basis, Dim)
-        CutDGD.monomial_basis_derivatives!(dVq, degree, xq, Val(Dim))
+        CloudSBP.monomial_basis_derivatives!(dVq, degree, xq, Val(Dim))
 
         for di = 1:Dim
             for p = 1:num_basis
@@ -313,13 +313,13 @@ end
         Dim = 2
         cell = Cell(SVector{2}([-1.0, -1.0]), SVector{2}([2.0, 2.0]),
                     CellData(Vector{Int}(), Vector{Int}()))
-        bfaces = CutDGD.build_boundary_faces(cell)
+        bfaces = CloudSBP.build_boundary_faces(cell)
 
         # create a point cloud 
         num_basis = binomial(Dim + degree, Dim)
         num_nodes = binomial(Dim + degree + 1, Dim)
         xc = randn(Dim, num_nodes)
-        CutDGD.set_xref_and_dx!(cell, xc)
+        CloudSBP.set_xref_and_dx!(cell, xc)
         work = zeros(2)
         lval = zeros(1)
         xval = zeros(1)
@@ -329,16 +329,16 @@ end
 
             # define the degree j level-set 
             xval[1] = 1.0
-            CutDGD.jacobi_poly!(lval, xval, 0.0, 0.0, j, work)
+            CloudSBP.jacobi_poly!(lval, xval, 0.0, 0.0, j, work)
             fac = 1/lval[1]
             function levset(x)
                 xval[1] = x[1]
-                CutDGD.jacobi_poly!(lval, xval, 0.0, 0.0, j, work)
+                CloudSBP.jacobi_poly!(lval, xval, 0.0, 0.0, j, work)
                 return lval[1]*fac - x[2]
             end 
 
             # get the boundary operator 
-            E = CutDGD.cell_symmetric_part(cell, bfaces, xc, degree, levset)
+            E = CloudSBP.cell_symmetric_part(cell, bfaces, xc, degree, levset)
 
             # get quadrature points for the cell using Saye's algorithm directly;
             # these are used to integrate derivatives of the boundary integrands
@@ -349,8 +349,8 @@ end
             # define the function begin integrated 
             V = zeros(num_nodes)
             Vwork = zeros(2*num_nodes)
-            CutDGD.jacobi_poly!(V, view(xc,1,:), 0.0, 0.0, i, Vwork)
-            dVq = CutDGD.diff_jacobi_poly(view(xq,1,:), 0.0, 0.0, i)
+            CloudSBP.jacobi_poly!(V, view(xc,1,:), 0.0, 0.0, i, Vwork)
+            dVq = CloudSBP.diff_jacobi_poly(view(xq,1,:), 0.0, 0.0, i)
 
             integral = ones(num_nodes)'*E[:,:,1]*V
             ref_value = dot(wq, dVq)
@@ -367,13 +367,13 @@ end
         Dim = 3
         cell = Cell(SVector{3}([-1.0, -1.0, -1.0]), SVector{3}([2.0, 2.0, 2.1]),
                     CellData(Vector{Int}(), Vector{Int}()))
-        bfaces = CutDGD.build_boundary_faces(cell)
+        bfaces = CloudSBP.build_boundary_faces(cell)
 
         # create a point cloud 
         num_basis = binomial(Dim + degree, Dim)
         num_nodes = binomial(Dim + degree + 1, Dim)
         xc = randn(Dim, num_nodes)
-        CutDGD.set_xref_and_dx!(cell, xc)
+        CloudSBP.set_xref_and_dx!(cell, xc)
         work = zeros(3)
         lval = zeros(1)
         xval = zeros(2)
@@ -383,19 +383,19 @@ end
 
                 # define the degree `2*degree -i - j` level set 
                 xval[:] = [1.0; 1.0]
-                CutDGD.jacobi_poly!(lval, view(xval,1:1), 0.0, 0.0, degree-i, work)
+                CloudSBP.jacobi_poly!(lval, view(xval,1:1), 0.0, 0.0, degree-i, work)
                 lx = lval[1] 
-                CutDGD.jacobi_poly!(lval, view(xval,2:2), 0.0, 0.0, degree-j, work)
+                CloudSBP.jacobi_poly!(lval, view(xval,2:2), 0.0, 0.0, degree-j, work)
                 fac = 1/(lx*lval[1])
                 function levset(x)
-                    CutDGD.jacobi_poly!(lval, view(x,1:1), 0.0, 0.0, degree-i, work)
+                    CloudSBP.jacobi_poly!(lval, view(x,1:1), 0.0, 0.0, degree-i, work)
                     lx = lval[1] 
-                    CutDGD.jacobi_poly!(lval, view(x,2:2), 0.0, 0.0, degree-j, work)
+                    CloudSBP.jacobi_poly!(lval, view(x,2:2), 0.0, 0.0, degree-j, work)
                     return lx*lval[1]*fac - x[3]
                 end
 
                 # get the boundary operator
-                E = CutDGD.cell_symmetric_part(cell, bfaces, xc, degree, levset)
+                E = CloudSBP.cell_symmetric_part(cell, bfaces, xc, degree, levset)
 
                 # get quadrature points for the cell using Saye's algorithm directly;
                 # these are used to integrate derivatives of the boundary integrands
@@ -407,18 +407,18 @@ end
                 Vx = zeros(num_nodes)
                 Vy = zero(Vx)
                 Vwork = zeros(3*num_nodes)
-                CutDGD.jacobi_poly!(Vx, view(xc,1,:), 0.0, 0.0, i, Vwork)
-                CutDGD.jacobi_poly!(Vy, view(xc,2,:), 0.0, 0.0, j, Vwork)
+                CloudSBP.jacobi_poly!(Vx, view(xc,1,:), 0.0, 0.0, i, Vwork)
+                CloudSBP.jacobi_poly!(Vy, view(xc,2,:), 0.0, 0.0, j, Vwork)
 
                 Vqx = zeros(num_quad)
                 Vqy = zero(Vqx)
                 Vqwork = zeros(3*num_quad)
                 dVqx = zero(Vqx)
                 dVqy = zero(Vqx)
-                CutDGD.jacobi_poly!(Vqx, view(xq,1,:), 0.0, 0.0, i, Vqwork)
-                CutDGD.jacobi_poly!(Vqy, view(xq,2,:), 0.0, 0.0, j, Vqwork)
-                dVqx = CutDGD.diff_jacobi_poly(view(xq,1,:), 0.0, 0.0, i)
-                dVqy = CutDGD.diff_jacobi_poly(view(xq,2,:), 0.0, 0.0, j)
+                CloudSBP.jacobi_poly!(Vqx, view(xq,1,:), 0.0, 0.0, i, Vqwork)
+                CloudSBP.jacobi_poly!(Vqy, view(xq,2,:), 0.0, 0.0, j, Vqwork)
+                dVqx = CloudSBP.diff_jacobi_poly(view(xq,1,:), 0.0, 0.0, i)
+                dVqy = CloudSBP.diff_jacobi_poly(view(xq,2,:), 0.0, 0.0, j)
                 dVq = zeros(num_quad,2) 
                 dVq[:,1] = dVqx.*Vqy 
                 dVq[:,2] = Vqx.*dVqy 
@@ -455,22 +455,22 @@ end
     num_nodes = binomial(Dim + 2*degree -1, Dim)
     xc = randn(Dim, num_nodes)
     cell.data.points = 1:num_nodes
-    CutDGD.set_xref_and_dx!(cell, xc)
+    CloudSBP.set_xref_and_dx!(cell, xc)
     cell.data.cut = true
     
     # get the quadrature (norm) and symmetric part
-    m = CutDGD.calc_moments!(cell, levset, 2*degree-1, min(3,degree))
-    w = CutDGD.cell_quadrature(2*degree-1, xc, m, cell.data.xref, cell.data.dx, Val(Dim))    
-    E = CutDGD.cell_symmetric_part(cell, xc, degree, levset, fit_degree=min(3,degree))
+    m = CloudSBP.calc_moments!(cell, levset, 2*degree-1, min(3,degree))
+    w = CloudSBP.cell_quadrature(2*degree-1, xc, m, cell.data.xref, cell.data.dx, Val(Dim))    
+    E = CloudSBP.cell_symmetric_part(cell, xc, degree, levset, fit_degree=min(3,degree))
 
     # modify E to make it compatible with H
-    CutDGD.make_compatible!(E, w, cell, xc, degree)
+    CloudSBP.make_compatible!(E, w, cell, xc, degree)
 
     # check for compatibility using monomial basis
     V = zeros(num_nodes, num_basis)
-    CutDGD.monomial_basis!(V, degree, xc, Val(Dim))
+    CloudSBP.monomial_basis!(V, degree, xc, Val(Dim))
     dV = zeros(num_nodes, num_basis, Dim)
-    CutDGD.monomial_basis_derivatives!(dV, degree, xc, Val(Dim))
+    CloudSBP.monomial_basis_derivatives!(dV, degree, xc, Val(Dim))
 
     # multiply by random vector to reduce the number of tests 
     lvec = randn(num_basis)

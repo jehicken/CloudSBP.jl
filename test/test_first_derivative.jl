@@ -55,7 +55,7 @@ end
 #         num_basis = binomial(Dim + deg, Dim)
 #         points = randn(Dim, num_basis) .+ 0.5*ones(Dim)
 #         root.data.points = 1:num_basis        
-#         CutDGD.uncut_volume_integrate!(rows, cols, Svals, root, points, deg)
+#         CloudSBP.uncut_volume_integrate!(rows, cols, Svals, root, points, deg)
 #         S = SVector(ntuple(d -> sparse(rows[d], cols[d], Svals[d]), Dim))
 
 #         for Iu in CartesianIndices(ntuple(i -> 0:deg, Dim))
@@ -153,7 +153,7 @@ end
 #         num_basis = binomial(Dim + deg, Dim)
 #         points = randn(Dim, num_basis) .+ 0.5*ones(Dim)
 #         root.data.points = 1:num_basis        
-#         CutDGD.cut_volume_integrate!(rows, cols, Svals, root, levset, points, deg)
+#         CloudSBP.cut_volume_integrate!(rows, cols, Svals, root, levset, points, deg)
 #         S = SVector(ntuple(d -> sparse(rows[d], cols[d], Svals[d]), Dim))
 
 #         for Iu in CartesianIndices(ntuple(i -> 0:deg, Dim))

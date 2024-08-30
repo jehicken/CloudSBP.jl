@@ -1,4 +1,4 @@
-using CutDGD
+using CloudSBP
 using Test
 using RegionTrees
 using StaticArrays: SVector, @SVector, MVector
@@ -72,33 +72,33 @@ for i in axes(xc,2)
 end
 
 # refine mesh, build stencil, get face lists
-CutDGD.refine_on_points!(root, xc)
+CloudSBP.refine_on_points!(root, xc)
 #for cell in allleaves(root)
-#    split!(cell, CutDGD.get_data)
+#    split!(cell, CloudSBP.get_data)
 #end
-CutDGD.mark_cut_cells!(root, levset)
-CutDGD.build_nn_stencils!(root, xc, 2*degree-1)
-CutDGD.set_xref_and_dx!(root, xc)
-m = CutDGD.calc_moments!(root, levset, 2*degree-1, min(degree,2))
-ifaces = CutDGD.build_faces(root)
-bfaces = CutDGD.build_boundary_faces(root)
-CutDGD.mark_cut_faces!(ifaces, levset)
-CutDGD.mark_cut_faces!(bfaces, levset)
+CloudSBP.mark_cut_cells!(root, levset)
+CloudSBP.build_nn_stencils!(root, xc, 2*degree-1)
+CloudSBP.set_xref_and_dx!(root, xc)
+m = CloudSBP.calc_moments!(root, levset, 2*degree-1, min(degree,2))
+ifaces = CloudSBP.build_faces(root)
+bfaces = CloudSBP.build_boundary_faces(root)
+CloudSBP.mark_cut_faces!(ifaces, levset)
+CloudSBP.mark_cut_faces!(bfaces, levset)
 
 # construct the norm, skew and symmetric operators 
 H = zeros(num_nodes)
-CutDGD.diagonal_norm!(H, root, xc, 2*degree-1)
-S = CutDGD.skew_operator(root, ifaces, bfaces, xc, levset, degree,
+CloudSBP.diagonal_norm!(H, root, xc, 2*degree-1)
+S = CloudSBP.skew_operator(root, ifaces, bfaces, xc, levset, degree,
 fit_degree=min(degree,2))
-E = CutDGD.symmetric_operator(root, ifaces, bfaces, xc, levset, degree,
+E = CloudSBP.symmetric_operator(root, ifaces, bfaces, xc, levset, degree,
 fit_degree=min(degree,2))
 
 # check that H*dV/dx = (S + 0.5*E)*V 
 num_basis = binomial(Dim + degree, Dim)
 V = zeros(num_nodes, num_basis)
-CutDGD.monomial_basis!(V, degree, xc, Val(Dim))
+CloudSBP.monomial_basis!(V, degree, xc, Val(Dim))
 dV = zeros(num_nodes, num_basis, Dim)
-CutDGD.monomial_basis_derivatives!(dV, degree, xc, Val(Dim))
+CloudSBP.monomial_basis_derivatives!(dV, degree, xc, Val(Dim))
 
 # check global compatibility 
 for di = 1:Dim
@@ -127,7 +127,7 @@ end
 
 fig = figure("quad_points",figsize=(10,10))
 num_quad1d = ceil(Int, (2*degree-1+1)/2)
-x1d, w1d = CutDGD.lg_nodes(num_quad1d) # could also use lgl_nodes
+x1d, w1d = CloudSBP.lg_nodes(num_quad1d) # could also use lgl_nodes
 wq = zeros(length(w1d)^Dim)
 xq = zeros(Dim, length(wq))
 
@@ -148,18 +148,18 @@ end
 
 
 # plot the cells
-println("number of cells = ",CutDGD.num_leaves(root))
+println("number of cells = ",CloudSBP.num_leaves(root))
 
 num_immersed = 0
 
 if Dim == 1
 
     for cell in allleaves(root)
-        if CutDGD.is_immersed(cell) 
+        if CloudSBP.is_immersed(cell) 
             global num_immersed +=1 
             continue
         end
-        if CutDGD.is_cut(cell)
+        if CloudSBP.is_cut(cell)
             wq_cut, xq_cut = cut_cell_quad(cell.boundary, levset, num_quad1d, 
                                            fit_degree=min(degree,2))
             #println("wq_cut = ",wq_cut)
@@ -169,24 +169,24 @@ if Dim == 1
                                                fit_degree=min(degree,2))
             PyPlot.plot(vec(surf_pts[1,:]), zero(vec(surf_pts[1,:])), "gd", ms=10)
         else
-            CutDGD.quadrature!(xq, wq, cell.boundary, x1d, w1d)
+            CloudSBP.quadrature!(xq, wq, cell.boundary, x1d, w1d)
             PyPlot.plot(vec(xq[1,:]), zero(vec(xq[1,:])), "bs")
         end
     end
     
     # plot the interface quad points
     for face in ifaces 
-        if CutDGD.is_immersed(face)
+        if CloudSBP.is_immersed(face)
             continue
         end
-        if CutDGD.is_cut(face)
+        if CloudSBP.is_cut(face)
             wq_face, xq_face = cut_face_quad(face.boundary, face.dir, levset,
             num_quad1d, fit_degree=min(degree,2))
             PyPlot.plot(vec(xq_face[1,:]), zero(xq_face[1,:]), "rd")
         else
             wq_face = zeros(length(w1d)^(Dim-1))
             xq_face = zeros(Dim, length(wq_face))
-            CutDGD.face_quadrature!(xq_face, wq_face, face.boundary, x1d, w1d, face.dir)
+            CloudSBP.face_quadrature!(xq_face, wq_face, face.boundary, x1d, w1d, face.dir)
             PyPlot.plot(vec(xq_face[1,:]), zero(xq_face[1,:]), "bd")
         end
         
@@ -203,12 +203,12 @@ else # Dim == 2
         v = hcat(collect(vertices(cell.boundary))...)
         PyPlot.plot(v[1,[1,2,4,3,1]], v[2,[1,2,4,3,1]], "-k")
         
-        if CutDGD.is_immersed(cell) 
+        if CloudSBP.is_immersed(cell) 
             global num_immersed +=1 
             continue
         end
         
-        if CutDGD.is_cut(cell)
+        if CloudSBP.is_cut(cell)
             wq_cut, xq_cut = cut_cell_quad(cell.boundary, levset, num_quad1d, 
             fit_degree=min(degree,2))
             #println("wq_cut = ",wq_cut)
@@ -218,7 +218,7 @@ else # Dim == 2
             fit_degree=min(degree,2))
             PyPlot.plot(vec(surf_pts[1,:]), vec(surf_pts[2,:]), "gd")
         else
-            CutDGD.quadrature!(xq, wq, cell.boundary, x1d, w1d)
+            CloudSBP.quadrature!(xq, wq, cell.boundary, x1d, w1d)
             PyPlot.plot(vec(xq[1,:]), vec(xq[2,:]), "bs")
         end
     end
@@ -226,17 +226,17 @@ else # Dim == 2
     
     # plot the interface quad points
     for face in ifaces 
-        if CutDGD.is_immersed(face)
+        if CloudSBP.is_immersed(face)
             continue
         end
-        if CutDGD.is_cut(face)
+        if CloudSBP.is_cut(face)
             wq_face, xq_face = cut_face_quad(face.boundary, face.dir, levset,
             num_quad1d, fit_degree=min(degree,2))
             PyPlot.plot(vec(xq_face[1,:]), vec(xq_face[2,:]), "rd")
         else
             wq_face = zeros(length(w1d)^(Dim-1))
             xq_face = zeros(Dim, length(wq_face))
-            CutDGD.face_quadrature!(xq_face, wq_face, face.boundary, x1d, w1d, face.dir)
+            CloudSBP.face_quadrature!(xq_face, wq_face, face.boundary, x1d, w1d, face.dir)
             PyPlot.plot(vec(xq_face[1,:]), vec(xq_face[2,:]), "bd")
         end
         

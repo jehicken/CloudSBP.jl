@@ -49,23 +49,23 @@ end
         num_nodes = binomial(Dim + 2*degree -1, Dim)
         xc = randn(Dim, num_nodes)
         cell.data.points = 1:num_nodes
-        CutDGD.set_xref_and_dx!(cell, xc)
+        CloudSBP.set_xref_and_dx!(cell, xc)
 
         # get the quadrature
-        m = CutDGD.calc_moments!(cell, 2*degree-1)
-        w = CutDGD.cell_quadrature(2*degree-1, xc, m, cell.data.xref, cell.data.dx, Val(Dim))
+        m = CloudSBP.calc_moments!(cell, 2*degree-1)
+        w = CloudSBP.cell_quadrature(2*degree-1, xc, m, cell.data.xref, cell.data.dx, Val(Dim))
 
         # get the symmetric boundary operator 
-        E = CutDGD.cell_symmetric_part(cell, xc, degree)
+        E = CloudSBP.cell_symmetric_part(cell, xc, degree)
 
         # get the skew-symmetric operator
-        S = CutDGD.cell_skew_part(E, w, cell, xc, degree)
+        S = CloudSBP.cell_skew_part(E, w, cell, xc, degree)
 
         # form D and check that it exactly differentiates polynomials up to degree
         V = zeros(num_nodes, num_basis)
-        CutDGD.monomial_basis!(V, degree, xc, Val(Dim))
+        CloudSBP.monomial_basis!(V, degree, xc, Val(Dim))
         dV = zeros(num_nodes, num_basis, Dim)
-        CutDGD.monomial_basis_derivatives!(dV, degree, xc, Val(Dim))
+        CloudSBP.monomial_basis_derivatives!(dV, degree, xc, Val(Dim))
         
         # left and right multiply by random vectors to reduce the number of tests 
         lvec = randn(num_nodes)
@@ -103,25 +103,25 @@ end
         num_nodes = binomial(Dim + 2*degree -1, Dim)
         xc = randn(Dim, num_nodes)
         cell.data.points = 1:num_nodes
-        CutDGD.set_xref_and_dx!(cell, xc)
+        CloudSBP.set_xref_and_dx!(cell, xc)
         cell.data.cut = true
 
         # get the quadrature
-        m = CutDGD.calc_moments!(cell, levset, 2*degree-1, min(3,degree))
-        w = CutDGD.cell_quadrature(2*degree-1, xc, m, cell.data.xref, cell.data.dx, Val(Dim))
+        m = CloudSBP.calc_moments!(cell, levset, 2*degree-1, min(3,degree))
+        w = CloudSBP.cell_quadrature(2*degree-1, xc, m, cell.data.xref, cell.data.dx, Val(Dim))
 
         # get the symmetric boundary operator 
-        E = CutDGD.cell_symmetric_part(cell, xc, degree, levset, fit_degree=min(3,degree))
-        CutDGD.make_compatible!(E, w, cell, xc, degree)
+        E = CloudSBP.cell_symmetric_part(cell, xc, degree, levset, fit_degree=min(3,degree))
+        CloudSBP.make_compatible!(E, w, cell, xc, degree)
 
         # get the skew-symmetric operator
-        S = CutDGD.cell_skew_part(E, w, cell, xc, degree)
+        S = CloudSBP.cell_skew_part(E, w, cell, xc, degree)
 
         # form D and check that it exactly differentiates polynomials up to degree
         V = zeros(num_nodes, num_basis)
-        CutDGD.monomial_basis!(V, degree, xc, Val(Dim))
+        CloudSBP.monomial_basis!(V, degree, xc, Val(Dim))
         dV = zeros(num_nodes, num_basis, Dim)
-        CutDGD.monomial_basis_derivatives!(dV, degree, xc, Val(Dim))
+        CloudSBP.monomial_basis_derivatives!(dV, degree, xc, Val(Dim))
 
         # left and right multiply by random vectors to reduce the number of tests 
         lvec = randn(num_nodes)
@@ -156,7 +156,7 @@ end
 
         # add an interface
         dir = 1
-        face = CutDGD.build_face(dir, cell_left, cell_right)
+        face = CloudSBP.build_face(dir, cell_left, cell_right)
         
         # create a point cloud 
         num_basis = binomial(Dim + degree, Dim)
@@ -165,27 +165,27 @@ end
         xc[1,:] .*= 2.0 # to spread out the cells
         cell_left.data.points = 1:num_basis
         cell_right.data.points = (num_basis+1):num_nodes
-        CutDGD.set_xref_and_dx!(cell_left, xc)
-        CutDGD.set_xref_and_dx!(cell_right, xc)
+        CloudSBP.set_xref_and_dx!(cell_left, xc)
+        CloudSBP.set_xref_and_dx!(cell_right, xc)
 
         # get the interface matrix 
         xc_left = view(xc, :, face.cell[1].data.points)
         xc_right = view(xc, :, face.cell[2].data.points)
-        Sface = CutDGD.interface_skew_part(face, xc_left, xc_right, degree)
+        Sface = CloudSBP.interface_skew_part(face, xc_left, xc_right, degree)
 
         # get the face quadrature for testing purposes
-        x1d, w1d = CutDGD.lg_nodes(degree+1)
+        x1d, w1d = CloudSBP.lg_nodes(degree+1)
         wq_face = zeros(length(w1d)^(Dim-1))
         xq_face = zeros(Dim, length(wq_face))
-        CutDGD.face_quadrature!(xq_face, wq_face, face.boundary, x1d, w1d, face.dir)
+        CloudSBP.face_quadrature!(xq_face, wq_face, face.boundary, x1d, w1d, face.dir)
 
         # Evaluate the monomials at the point cloud and the face quadrature
         V_left = zeros(length(cell_left.data.points), num_basis)
         V_right = zeros(length(cell_right.data.points), num_basis)
-        CutDGD.monomial_basis!(V_left, degree, xc_left, Val(Dim))
-        CutDGD.monomial_basis!(V_right, degree, xc_right, Val(Dim))
+        CloudSBP.monomial_basis!(V_left, degree, xc_left, Val(Dim))
+        CloudSBP.monomial_basis!(V_right, degree, xc_right, Val(Dim))
         Vq = zeros(length(wq_face), num_basis)
-        CutDGD.monomial_basis!(Vq, degree, xq_face, Val(Dim))
+        CloudSBP.monomial_basis!(Vq, degree, xq_face, Val(Dim))
         
         # left and right multiply by random vectors to reduce the number of tests 
         lvec = randn(num_basis)
@@ -209,7 +209,7 @@ end
 
         # add an interface
         dir = 1
-        face = CutDGD.build_face(dir, cell_left, cell_right)
+        face = CloudSBP.build_face(dir, cell_left, cell_right)
 
         if Dim == 1
             levset = x -> x[1]^2 - 0.25
@@ -226,8 +226,8 @@ end
         xc[1,:] .*= 2.0 # to spread out the cells
         cell_left.data.points = 1:num_basis
         cell_right.data.points = (num_basis+1):num_nodes
-        CutDGD.set_xref_and_dx!(cell_left, xc)
-        CutDGD.set_xref_and_dx!(cell_right, xc)
+        CloudSBP.set_xref_and_dx!(cell_left, xc)
+        CloudSBP.set_xref_and_dx!(cell_right, xc)
         cell_left.data.cut = true
         cell_right.data.cut = true 
         face.cut = true
@@ -235,7 +235,7 @@ end
         # get the interface matrix 
         xc_left = view(xc, :, face.cell[1].data.points)
         xc_right = view(xc, :, face.cell[2].data.points)
-        Sface = CutDGD.interface_skew_part(face, xc_left, xc_right, degree,
+        Sface = CloudSBP.interface_skew_part(face, xc_left, xc_right, degree,
                                            levset, fit_degree=min(3,degree))
 
         # get the face quadrature for testing purposes
@@ -245,10 +245,10 @@ end
         # Evaluate the monomials at the point cloud and the face quadrature
         V_left = zeros(length(cell_left.data.points), num_basis)
         V_right = zeros(length(cell_right.data.points), num_basis)
-        CutDGD.monomial_basis!(V_left, degree, xc_left, Val(Dim))
-        CutDGD.monomial_basis!(V_right, degree, xc_right, Val(Dim))
+        CloudSBP.monomial_basis!(V_left, degree, xc_left, Val(Dim))
+        CloudSBP.monomial_basis!(V_right, degree, xc_right, Val(Dim))
         Vq = zeros(length(wq_face), num_basis)
-        CutDGD.monomial_basis!(Vq, degree, xq_face, Val(Dim))
+        CloudSBP.monomial_basis!(Vq, degree, xq_face, Val(Dim))
         
         # left and right multiply by random vectors to reduce the number of tests 
         lvec = randn(num_basis)
@@ -276,29 +276,30 @@ end
         xc = rand(Dim, num_nodes)
 
         # refine mesh, build stencil, get face lists
-        CutDGD.refine_on_points!(root, xc)
+        CloudSBP.refine_on_points!(root, xc)
         for cell in allleaves(root)
-            split!(cell, CutDGD.get_data)
+            split!(cell, CloudSBP.get_data)
         end
         levset = x -> 1.0
-        CutDGD.build_nn_stencils!(root, xc, 2*degree-1)
-        CutDGD.set_xref_and_dx!(root, xc)
-        m = CutDGD.calc_moments!(root, 2*degree-1)
-        ifaces = CutDGD.build_faces(root)
-        bfaces = CutDGD.build_boundary_faces(root)
+        CloudSBP.build_nn_stencils!(root, xc, 2*degree-1)
+        CloudSBP.set_xref_and_dx!(root, xc)
+        m = CloudSBP.calc_moments!(root, 2*degree-1)
+        ifaces = CloudSBP.build_faces(root)
+        bfaces = CloudSBP.build_boundary_faces(root)
 
         # construct the norm, skew and symmetric operators 
         H = zeros(num_nodes)
-        CutDGD.diagonal_norm!(H, root, xc, 2*degree-1)
-        S = CutDGD.skew_operator(root, ifaces, bfaces, xc, levset, degree)
-        E = CutDGD.symmetric_operator(root, ifaces, bfaces, xc, levset, degree)
+        CloudSBP.diagonal_norm!(H, root, xc, 2*degree-1)
+        S = CloudSBP.skew_operator(root, ifaces, bfaces, xc, levset, degree, 
+                                   use_cell_wts=false)
+        E = CloudSBP.symmetric_operator(root, ifaces, bfaces, xc, levset, degree)
 
         # check that H*dV/dx = (S + 0.5*E)*V 
         num_basis = binomial(Dim + degree, Dim)
         V = zeros(num_nodes, num_basis)
-        CutDGD.monomial_basis!(V, degree, xc, Val(Dim))
+        CloudSBP.monomial_basis!(V, degree, xc, Val(Dim))
         dV = zeros(num_nodes, num_basis, Dim)
-        CutDGD.monomial_basis_derivatives!(dV, degree, xc, Val(Dim))
+        CloudSBP.monomial_basis_derivatives!(dV, degree, xc, Val(Dim))
 
         for i in axes(V,2)
             for di = 1:Dim
@@ -338,33 +339,33 @@ end
         end
 
         # refine mesh, build stencil, get face lists
-        CutDGD.refine_on_points!(root, xc)
+        CloudSBP.refine_on_points!(root, xc)
         for cell in allleaves(root)
-            split!(cell, CutDGD.get_data)
+            split!(cell, CloudSBP.get_data)
         end
-        CutDGD.mark_cut_cells!(root, levset)
-        CutDGD.build_nn_stencils!(root, xc, 2*degree-1)
-        CutDGD.set_xref_and_dx!(root, xc)
-        m = CutDGD.calc_moments!(root, levset, 2*degree-1, min(degree,2))
-        ifaces = CutDGD.build_faces(root)
-        bfaces = CutDGD.build_boundary_faces(root)
-        CutDGD.mark_cut_faces!(ifaces, levset)
-        CutDGD.mark_cut_faces!(bfaces, levset)
+        CloudSBP.mark_cut_cells!(root, levset)
+        CloudSBP.build_nn_stencils!(root, xc, 2*degree-1)
+        CloudSBP.set_xref_and_dx!(root, xc)
+        m = CloudSBP.calc_moments!(root, levset, 2*degree-1, min(degree,2))
+        ifaces = CloudSBP.build_faces(root)
+        bfaces = CloudSBP.build_boundary_faces(root)
+        CloudSBP.mark_cut_faces!(ifaces, levset)
+        CloudSBP.mark_cut_faces!(bfaces, levset)
 
         # construct the norm, skew and symmetric operators 
         H = zeros(num_nodes)
-        CutDGD.diagonal_norm!(H, root, xc, 2*degree-1)
-        S = CutDGD.skew_operator(root, ifaces, bfaces, xc, levset, degree,
-                                 fit_degree=min(degree,2))
-        E = CutDGD.symmetric_operator(root, ifaces, bfaces, xc, levset, degree,
-                                 fit_degree=min(degree,2))
+        CloudSBP.diagonal_norm!(H, root, xc, 2*degree-1)
+        S = CloudSBP.skew_operator(root, ifaces, bfaces, xc, levset, degree,
+                                   fit_degree=min(degree,2), use_cell_wts=false)
+        E = CloudSBP.symmetric_operator(root, ifaces, bfaces, xc, levset, 
+                                        degree, fit_degree=min(degree,2))
 
         # check that H*dV/dx = (S + 0.5*E)*V 
         num_basis = binomial(Dim + degree, Dim)
         V = zeros(num_nodes, num_basis)
-        CutDGD.monomial_basis!(V, degree, xc, Val(Dim))
+        CloudSBP.monomial_basis!(V, degree, xc, Val(Dim))
         dV = zeros(num_nodes, num_basis, Dim)
-        CutDGD.monomial_basis_derivatives!(dV, degree, xc, Val(Dim))
+        CloudSBP.monomial_basis_derivatives!(dV, degree, xc, Val(Dim))
 
         # check global compatibility 
         for di = 1:Dim

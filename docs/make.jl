@@ -1,16 +1,16 @@
-using CutDGD
+using CloudSBP
 using Documenter
 
-DocMeta.setdocmeta!(CutDGD, :DocTestSetup, :(using CutDGD); recursive=true)
+DocMeta.setdocmeta!(CloudSBP, :DocTestSetup, :(using CloudSBP); recursive=true)
 
 makedocs(;
-    modules=[CutDGD],
+    modules=[CloudSBP],
     authors="Jason Hicken <jason.hicken@gmail.com> and contributors",
-    repo="https://github.com/jehicken/CutDGD.jl/blob/{commit}{path}#{line}",
-    sitename="CutDGD.jl",
+    repo="https://github.com/jehicken/CloudSBP.jl/blob/{commit}{path}#{line}",
+    sitename="CloudSBP.jl",
     format=Documenter.HTML(;
         prettyurls=get(ENV, "CI", "false") == "true",
-        canonical="https://jehicken.github.io/CutDGD.jl",
+        canonical="https://jehicken.github.io/CloudSBP.jl",
         edit_link="main",
         assets=String[],
     ),
@@ -20,6 +20,6 @@ makedocs(;
 )
 
 deploydocs(;
-    repo="github.com/jehicken/CutDGD.jl",
+    repo="github.com/jehicken/CloudSBP.jl",
     devbranch="main",
 )

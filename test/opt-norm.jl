@@ -1,6 +1,6 @@
 module OptNorm
 
-using CutDGD
+using CloudSBP
 using RegionTrees
 using StaticArrays: SVector, @SVector, MVector
 using LinearAlgebra
@@ -68,14 +68,14 @@ end
 end 
 
 # refine mesh, build sentencil, and evaluate particular quad and nullspace
-CutDGD.refine_on_points!(root, points)
+CloudSBP.refine_on_points!(root, points)
 for cell in allleaves(root)
-    split!(cell, CutDGD.get_data)
+    split!(cell, CloudSBP.get_data)
 end
-CutDGD.mark_cut_cells!(root, levset)
-CutDGD.build_nn_stencils!(root, points, degree)
-CutDGD.set_xref_and_dx!(root, points)
-m = CutDGD.calc_moments!(root, levset_func, degree)
+CloudSBP.mark_cut_cells!(root, levset)
+CloudSBP.build_nn_stencils!(root, points, degree)
+CloudSBP.set_xref_and_dx!(root, points)
+m = CloudSBP.calc_moments!(root, levset_func, degree)
 vol = sum(m[1,:])
 tet_vol = 2^Dim/factorial(Dim)
 vol *= sqrt(tet_vol)
@@ -106,27 +106,27 @@ H_tol .*= 0.1*vol/num_nodes #  0.5e-5
 #println("H_tol = ", min_dist^Dim)
 
 points_init = copy(points)
-H = CutDGD.opt_norm!(root, points, degree, H_tol, mu, dist_ref, max_rank)
+H = CloudSBP.opt_norm!(root, points, degree, H_tol, mu, dist_ref, max_rank)
 
 println("minimum(H) = ",minimum(H))
 
 # How many local weights are negative?
 count = 0
 for cell in allleaves(root)
-    if CutDGD.is_immersed(cell)
+    if CloudSBP.is_immersed(cell)
         continue
     end
     # get the nodes in this cell's stencil
     nodes = view(points, :, cell.data.points)
     # get cell quadrature and add to global norm
-    w = CutDGD.cell_quadrature(degree, nodes, cell.data.moments, cell.data.xref,
+    w = CloudSBP.cell_quadrature(degree, nodes, cell.data.moments, cell.data.xref,
                         cell.data.dx, Val(Dim))
     if minimum(w) < 0.0
         global count += 1
     end
 end
 println("Number of cells with negative norm: ",count)
-println("Percentage of cells: ",100*count/CutDGD.num_leaves(root)," %")
+println("Percentage of cells: ",100*count/CloudSBP.num_leaves(root)," %")
 
 
 

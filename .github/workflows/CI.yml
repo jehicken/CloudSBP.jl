@@ -58,6 +58,6 @@ jobs:
       - run: |
           julia --project=docs -e '
             using Documenter: DocMeta, doctest
-            using CutDGD
-            DocMeta.setdocmeta!(CutDGD, :DocTestSetup, :(using CutDGD); recursive=true)
-            doctest(CutDGD)'
+            using CloudSBP
+            DocMeta.setdocmeta!(CloudSBP, :DocTestSetup, :(using CloudSBP); recursive=true)
+            doctest(CloudSBP)'

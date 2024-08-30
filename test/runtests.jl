@@ -1,4 +1,4 @@
-using CutDGD
+using CloudSBP
 using Test
 using RegionTrees
 using StaticArrays: SVector, @SVector, MVector
@@ -7,16 +7,12 @@ using Random
 using SparseArrays
 using CutQuad
 
-# Following StaticArrays approach of using repeatable "random" tests
+# For repeatable "random" tests
 Random.seed!(42)
 
-@testset "CutDGD.jl" begin
+@testset "CloudSBP.jl" begin
 
-    @testset "test norm extensions routines" begin
-        include("test_norm_ext.jl")
-    end
-
-    if false
+    if true
         
     @testset "test utility routines" begin 
         include("test_utils.jl")
@@ -44,6 +40,10 @@ Random.seed!(42)
 
     @testset "test norm routines" begin
         include("test_norm.jl")
+    end
+
+    @testset "test node optimization routines" begin
+        include("test_node_opt.jl")
     end
 
     @testset "test symmetric-part routines" begin

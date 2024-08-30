@@ -267,9 +267,9 @@ function opt_norm_null!(root::Cell{Data, Dim, T, L}, xc, degree, H_tol, max_rank
         #end
         for n = 1:max_iter
             iter += 1
-            obj = CutDGD.quad_penalty(root, wp, Z, y, H_tol)
-            CutDGD.quad_penalty_grad!(g, root, wp, Z, y, H_tol)
-            CutDGD.diagonal_norm!(H, root, wp, Z, y)
+            obj = CloudSBP.quad_penalty(root, wp, Z, y, H_tol)
+            CloudSBP.quad_penalty_grad!(g, root, wp, Z, y, H_tol)
+            CloudSBP.diagonal_norm!(H, root, wp, Z, y)
 
             #minH = minimum(H)
             min_idx = argmin(H)
@@ -286,18 +286,18 @@ function opt_norm_null!(root::Cell{Data, Dim, T, L}, xc, degree, H_tol, max_rank
             
             #fill!(p, 0.0)
             #println("norm(p) before = ",norm(p))
-            CutDGD.apply_approx_inverse!(p, g, root, wp, Z, y, H_tol, max_rank)
-            #CutDGD.local_opt!(p, g, root, wp, Z, y, H_tol)
+            CloudSBP.apply_approx_inverse!(p, g, root, wp, Z, y, H_tol, max_rank)
+            #CloudSBP.local_opt!(p, g, root, wp, Z, y, H_tol)
             #println("norm(p) after = ",norm(p))
             #y[:] += p[:]
-            #CutDGD.diagonal_norm!(H, root, wp, Z, y)
+            #CloudSBP.diagonal_norm!(H, root, wp, Z, y)
             #break
 
             alpha = 1.0
             obj0 = obj
             for k = 1:max_line
                 y[:] += alpha*p
-                obj = CutDGD.quad_penalty(root, wp, Z, y, H_tol)
+                obj = CloudSBP.quad_penalty(root, wp, Z, y, H_tol)
                 if verbose 
                     println("\t\tline-search iter ",k,": alpha = ",alpha,
                             ": obj0 = ",obj0,": obj = ",obj)
@@ -443,7 +443,7 @@ function positive_norm!(root::Cell{Data, Dim, T, L}, xc, degree, H_tol;
 
     max_iter = 100
     for k = 1:max_iter
-        CutDGD.diagonal_norm!(H, root, wp, Z, y)
+        CloudSBP.diagonal_norm!(H, root, wp, Z, y)
         if verbose
             min_idx = argmin(H)
             neg = count(i -> H[i] < H_tol[i], axes(H,1))
@@ -776,7 +776,7 @@ function solve_norm(root, xc, degree, H_tol; verbose::Bool=false,
         lam[:] += alpha_lam*dlam[:]
     end
     # Compute the norm and update the particular solution
-    CutDGD.diagonal_norm!(H, root, wp, Z, y)
+    CloudSBP.diagonal_norm!(H, root, wp, Z, y)
     ptr = 0
     for (c, cell) in enumerate(allleaves(root))
         if is_immersed(cell)

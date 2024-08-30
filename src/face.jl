@@ -73,7 +73,6 @@ end
 
 show(io::IO, face::Face) = print(io, "Face: dir = $(face.dir) $(cell.boundary)")
 
-
 """
     cut = is_cut(face)
 

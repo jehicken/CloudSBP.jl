@@ -31,7 +31,7 @@ function cell_skew_part(E, H, cell::Cell{Data, Dim, T, L}, xc, degree
     poly_basis_derivatives!(dV, degree, xc_trans, Val(Dim))
 
     B = zero(dV)
-    for d = 1:Dim 
+    for d = 1:Dim
         B[:,:,d] = diagm(H)*dV[:,:,d]/dx[d] - 0.5*E[:,:,d]*V
     end
     F = qr(V)
@@ -169,7 +169,7 @@ end
 
 """
     S = skew_operator(root, ifaces, bfaces, xc, levset, degree
-                      [, fit_degree=degree])
+                      [, fit_degree=degree, use_cell_wts=true])
 
 Constructs the skew-symmetric part of a (global), first-derivative SBP 
 operator.  The integration mesh is given by `root` and `xc` defines the cloud 
@@ -178,10 +178,11 @@ array of interfaces and `bfaces` is an array of boundary faces corresponding to
 `root`.  `levset` is a function that defines the immersed geomtry, if any.  The
 skew-symmetric matrix is degree `degree` exact.  Finally, `fit_degree` gives 
 the polynomial degree of the Bernstein polynomials used to approximate `levset` 
-by the Algoim library.
+by the Algoim library.  If `use_cell_wts` is `true`, the cell-based norm is formed using the data in `cell.data.wts`.
 """
 function skew_operator(root::Cell{Data, Dim, T, L}, ifaces, bfaces, xc, levset, 
-                       degree; fit_degree::Int=degree) where {Data, Dim, T, L}
+                       degree; fit_degree::Int=degree,
+                       use_cell_wts::Bool=true) where {Data, Dim, T, L}
     # set up arrays to store sparse matrix information
     rows = Array{Array{Int64}}(undef, Dim)
     cols = Array{Array{Int64}}(undef, Dim)
@@ -196,13 +197,17 @@ function skew_operator(root::Cell{Data, Dim, T, L}, ifaces, bfaces, xc, levset,
         if is_immersed(cell)
             continue
         end
-        # get the nodes in this cell's stencil
+        # get the nodes in this cell's stencil and compute the cell-based norm
         nodes = view(xc, :, cell.data.points)
-        xref = cell.data.xref
-        dx = cell.data.dx
-        moments = cell.data.moments
-        #Hcell = cell_quadrature(2*degree-1, nodes, moments, xref, dx, Val(Dim))
-        Hcell = cell.data.wts
+        if use_cell_wts
+            Hcell = cell.data.wts
+        else 
+            xref = cell.data.xref
+            dx = cell.data.dx
+            moments = cell.data.moments
+            Hcell = cell_quadrature(2*degree-1, nodes, moments, xref, dx,
+                                    Val(Dim))
+        end
 
         if is_cut(cell)
             # this cell *may* be cut; use Saye's algorithm

@@ -3,15 +3,15 @@
 @testset "one-dimensional basis: degree $degree" for degree in 0:4
     cell = Cell(SVector(0.), SVector(1.))
     xc = reshape( collect(Float64, 0:degree), (1, degree+1))
-    x1d, w1d = CutDGD.lg_nodes(degree+1)
+    x1d, w1d = CloudSBP.lg_nodes(degree+1)
     wq = zeros(length(w1d))
     xq = zeros(1, length(wq))
-    CutDGD.quadrature!(xq, wq, cell.boundary, x1d, w1d)
+    CloudSBP.quadrature!(xq, wq, cell.boundary, x1d, w1d)
     phi = zeros(length(wq), degree+1, 2)    
-    xref, dx = CutDGD.get_bounding_box(cell.boundary, xc)
+    xref, dx = CloudSBP.get_bounding_box(cell.boundary, xc)
     dx[:] .*= 1.001
-    work = CutDGD.DGDWorkSpace{Float64,1}(degree, size(xc,2), length(wq))
-    CutDGD.dgd_basis!(phi, degree, xc, xq, xref, dx, work, Val(1))
+    work = CloudSBP.DGDWorkSpace{Float64,1}(degree, size(xc,2), length(wq))
+    CloudSBP.dgd_basis!(phi, degree, xc, xq, xref, dx, work, Val(1))
     for b = 1:size(xc,2)
         # y holds the Lagrange polynomials evaluated at xq 
         y = [ prod( ( (x - xc[1,i])/(xc[1,b] - xc[1,i]) 
@@ -35,16 +35,16 @@ end
     cell = Cell(SVector(0., 0.), SVector(0.5, 0.5))
     degree = 1
     xc = [0.0 1.0 0.0; 0.0 0.0 1.0]
-    x1d, w1d = CutDGD.lg_nodes(degree+1)
+    x1d, w1d = CloudSBP.lg_nodes(degree+1)
     wq = zeros(length(w1d)^2)
     xq = zeros(2, length(wq))
-    CutDGD.quadrature!(xq, wq, cell.boundary, x1d, w1d)
+    CloudSBP.quadrature!(xq, wq, cell.boundary, x1d, w1d)
     phi = zeros(length(wq), 3, 3)
-    xref, dx = CutDGD.get_bounding_box(cell.boundary, xc)
+    xref, dx = CloudSBP.get_bounding_box(cell.boundary, xc)
     dx[:] .*= 1.001
-    work = CutDGD.DGDWorkSpace{Float64,2}(degree, size(xc,2),
+    work = CloudSBP.DGDWorkSpace{Float64,2}(degree, size(xc,2),
                                          length(wq))        
-    CutDGD.dgd_basis!(phi, degree, xc, xq, xref, dx, work, Val(2))
+    CloudSBP.dgd_basis!(phi, degree, xc, xq, xref, dx, work, Val(2))
     psi = [(x,y)-> 1-x-y, (x,y)-> x, (x,y)-> y]
     dpsidx = [(x,y)-> -1., (x,y)-> 1., (x,y)-> 0.]
     dpsidy = [(x,y)-> -1., (x,y)-> 0., (x,y)-> 1.]
@@ -69,18 +69,18 @@ end
     degree = 2
     xc = [0.0 1.0 2.0 0.0 1.0 0.0;
           0.0 0.0 0.0 1.0 1.0 2.0]
-    x1d, w1d = CutDGD.lg_nodes(degree+1)
+    x1d, w1d = CloudSBP.lg_nodes(degree+1)
     wq = zeros(length(w1d)^2)
     xq = zeros(2, length(wq))
-    CutDGD.quadrature!(xq, wq, cell.boundary, x1d, w1d)
+    CloudSBP.quadrature!(xq, wq, cell.boundary, x1d, w1d)
     phi = zeros(length(wq), 6, 3)
-    #work = CutDGD.dgd_basis_work_array(degree, size(xc,2), length(wq), 
+    #work = CloudSBP.dgd_basis_work_array(degree, size(xc,2), length(wq), 
     #                                  Val(2)) 
-    xref, dx = CutDGD.get_bounding_box(cell.boundary, xc)
+    xref, dx = CloudSBP.get_bounding_box(cell.boundary, xc)
     dx[:] .*= 1.001
-    work = CutDGD.DGDWorkSpace{Float64,2}(degree, size(xc,2),
+    work = CloudSBP.DGDWorkSpace{Float64,2}(degree, size(xc,2),
                                          length(wq)) 
-    CutDGD.dgd_basis!(phi, degree, xc, xq, xref, dx, work, Val(2))
+    CloudSBP.dgd_basis!(phi, degree, xc, xq, xref, dx, work, Val(2))
     psi = [(x,y)-> 1 - 1.5*x - 1.5*y + 0.5*x^2 + 0.5*y^2 + x*y,
            (x,y)-> 2*x - x^2 - x*y, 
            (x,y)-> -0.5*x + 0.5*x^2,
@@ -123,18 +123,18 @@ end
     cell = Cell(SVector(0., 0., 0.), SVector(0.5, 0.5, 0.5))
     degree = 1
     xc = [0.0 1.0 0.0 0.0; 0.0 0.0 1.0 0.0; 0.0 0.0 0.0 1.0]
-    x1d, w1d = CutDGD.lg_nodes(degree+1)
+    x1d, w1d = CloudSBP.lg_nodes(degree+1)
     wq = zeros(length(w1d)^3)
     xq = zeros(3, length(wq))
-    CutDGD.quadrature!(xq, wq, cell.boundary, x1d, w1d)
+    CloudSBP.quadrature!(xq, wq, cell.boundary, x1d, w1d)
     phi = zeros(length(wq), 4, 4)
-    #work = CutDGD.dgd_basis_work_array(degree, size(xc,2), length(wq),
+    #work = CloudSBP.dgd_basis_work_array(degree, size(xc,2), length(wq),
     #                                  Val(3)) 
-    xref, dx = CutDGD.get_bounding_box(cell.boundary, xc)
+    xref, dx = CloudSBP.get_bounding_box(cell.boundary, xc)
     dx[:] .*= 1.001
-    work = CutDGD.DGDWorkSpace{Float64,3}(degree, size(xc,2),
+    work = CloudSBP.DGDWorkSpace{Float64,3}(degree, size(xc,2),
                                          length(wq))
-    CutDGD.dgd_basis!(phi, degree, xc, xq, xref, dx, work, Val(3))
+    CloudSBP.dgd_basis!(phi, degree, xc, xq, xref, dx, work, Val(3))
     psi = [(x,y,z)-> 1-x-y-z, (x,y,z)-> x, (x,y,z)-> y, (x,y,z)-> z]
     dpsidx = [(x,y,z)-> -1., (x,y,z)-> 1., (x,y,z)-> 0., (x,y,z)-> 0.]
     dpsidy = [(x,y,z)-> -1., (x,y,z)-> 0., (x,y,z)-> 1., (x,y,z)-> 0.]
@@ -171,27 +171,27 @@ end
 
     # get quadrature points; we don't need to use the quadrature points 
     # for this particular test, but it doesn't hurt either
-    x1d, w1d = CutDGD.lg_nodes(degree+1)
+    x1d, w1d = CloudSBP.lg_nodes(degree+1)
     wq = zeros(length(w1d)^Dim)
     xq = zeros(Dim, length(wq))
-    CutDGD.quadrature!(xq, wq, cell.boundary, x1d, w1d)
+    CloudSBP.quadrature!(xq, wq, cell.boundary, x1d, w1d)
 
     # evaluate the DGD representation of the monomials 
     phi = zeros(length(wq), num_basis)
-    #work = CutDGD.dgd_basis_work_array(degree, size(xc,2), length(wq),
+    #work = CloudSBP.dgd_basis_work_array(degree, size(xc,2), length(wq),
     #                                  Val(Dim)) 
-    xref, dx = CutDGD.get_bounding_box(cell.boundary, xc)
+    xref, dx = CloudSBP.get_bounding_box(cell.boundary, xc)
     dx[:] .*= 1.001
-    work = CutDGD.DGDWorkSpace{Float64,Dim}(degree, size(xc,2),
+    work = CloudSBP.DGDWorkSpace{Float64,Dim}(degree, size(xc,2),
                                            length(wq))
-    CutDGD.dgd_basis!(phi, degree, xc, xq, xref, dx, work, Val(Dim))
+    CloudSBP.dgd_basis!(phi, degree, xc, xq, xref, dx, work, Val(Dim))
     Vc = zeros(num_basis, num_basis)
-    CutDGD.monomial_basis!(Vc, degree, xc, Val(Dim))            
+    CloudSBP.monomial_basis!(Vc, degree, xc, Val(Dim))            
     poly_at_quad = phi*Vc
 
     # evaluate the monomials at the quadrature points
     Vq = zeros(length(wq), num_basis)
-    CutDGD.monomial_basis!(Vq, degree, xq, Val(Dim))
+    CloudSBP.monomial_basis!(Vq, degree, xq, Val(Dim))
 
     @test isapprox(poly_at_quad, Vq)
 end
@@ -201,17 +201,17 @@ end
                 SVector(ntuple(i -> 0.5, Dim)))
     num_basis = binomial(degree + Dim, Dim)
     xc = rand(Dim, num_basis)
-    x1d, w1d = CutDGD.lg_nodes(degree+1)
+    x1d, w1d = CloudSBP.lg_nodes(degree+1)
     wq = zeros(length(w1d)^Dim)
     xq = zeros(Dim, length(wq))
-    CutDGD.quadrature!(xq, wq, cell.boundary, x1d, w1d)
-    xref, dx = CutDGD.get_bounding_box(cell.boundary, xc)
+    CloudSBP.quadrature!(xq, wq, cell.boundary, x1d, w1d)
+    xref, dx = CloudSBP.get_bounding_box(cell.boundary, xc)
     dx[:] .*= 1.001
 
     basis_weights = rand(num_basis)
     phi_bar = wq*basis_weights'
     xc_bar = zero(xc)
-    CutDGD.dgd_basis_rev!(xc_bar, phi_bar, degree, xc, xq, xref, dx, Val(Dim))
+    CloudSBP.dgd_basis_rev!(xc_bar, phi_bar, degree, xc, xq, xref, dx, Val(Dim))
 
     # the objective is int_{cell} sum_{i=1}^n_k phi(x)*basis_weight dx 
     # we will consider a directional derivative in the direction v 
@@ -225,12 +225,12 @@ end
     xc_cs = complex.(xc, v*ceps)
     xq_cs = complex.(xq, 0.0)
     phi_cs = zeros(ComplexF64, length(wq), num_basis)
-    #work_cs = CutDGD.dgd_basis_work_array(degree, size(xc,2),
+    #work_cs = CloudSBP.dgd_basis_work_array(degree, size(xc,2),
     #                                     length(wq), Val(Dim), 
     #                                     type=eltype(xc_cs))
-    work_cs = CutDGD.DGDWorkSpace{ComplexF64,Dim}(degree, size(xc,2),
+    work_cs = CloudSBP.DGDWorkSpace{ComplexF64,Dim}(degree, size(xc,2),
                                                  length(wq))
-    CutDGD.dgd_basis!(phi_cs, degree, xc_cs, xq_cs, xref, dx, work_cs, Val(Dim))
+    CloudSBP.dgd_basis!(phi_cs, degree, xc_cs, xq_cs, xref, dx, work_cs, Val(Dim))
     dJdv_cs = imag(wq'*phi_cs*basis_weights)/ceps
 
     @test isapprox(dJdv, dJdv_cs)

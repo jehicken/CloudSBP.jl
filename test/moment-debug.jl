@@ -1,6 +1,6 @@
 module MomentDebug
 
-using CutDGD
+using CloudSBP
 using Test
 using RegionTrees
 using StaticArrays: SVector, @SVector, MVector
@@ -59,15 +59,15 @@ levset = LevelSet{Dim,Float64}(xc, nrm, tang, crv, rho)
 # Generate some DGD dof locations used to refine the background mesh
 num_nodes = 10*binomial(Dim + degree, Dim)
 points = rand(Dim, num_nodes)
-CutDGD.refine_on_points!(root, points)
+CloudSBP.refine_on_points!(root, points)
 for cell in allleaves(root)
-    split!(cell, CutDGD.get_data)
+    split!(cell, CloudSBP.get_data)
 end
 
-CutDGD.mark_cut_cells!(root, levset)
+CloudSBP.mark_cut_cells!(root, levset)
 
 
-num_cell = CutDGD.num_leaves(root)
+num_cell = CloudSBP.num_leaves(root)
 cell_xavg = zeros(Dim, num_cell)
 cell_dx = ones(Dim, num_cell) #zero(cell_xavg)
 for (c,cell) in enumerate(allleaves(root))
@@ -79,7 +79,7 @@ num_basis = binomial(Dim + degree, Dim)
 moments = zeros(num_basis, num_cell)
 
 # get arrays/data used for tensor-product quadrature 
-x1d, w1d = CutDGD.lg_nodes(degree+1) # could also use lgl_nodes
+x1d, w1d = CloudSBP.lg_nodes(degree+1) # could also use lgl_nodes
 num_quad = length(w1d)^Dim             
 wq = zeros(num_quad)
 xq = zeros(Dim, num_quad)
@@ -122,7 +122,7 @@ for (c, cell) in enumerate(allleaves(root))
             PyPlot.plot([xavg[1]], [xavg[2]], "ro")
         end        
         continue
-    elseif CutDGD.is_cut(cell)
+    elseif CloudSBP.is_cut(cell)
         println("\tuse Saye's algorithm")
         # this cell *may* be cut; use Saye's algorithm
         wq_cut, xq_cut, surf_wts, surf_pts = calc_cut_quad(
@@ -137,7 +137,7 @@ for (c, cell) in enumerate(allleaves(root))
         end
         Vq_cut = zeros(length(wq_cut), num_basis)
         workq_cut = zeros((Dim+1)*length(wq_cut))
-        CutDGD.poly_basis!(Vq_cut, degree, xq_cut, workq_cut, Val(Dim))
+        CloudSBP.poly_basis!(Vq_cut, degree, xq_cut, workq_cut, Val(Dim))
         for i = 1:num_basis
             moments[i, c] = dot(Vq_cut[:,i], wq_cut)
         end
@@ -146,14 +146,14 @@ for (c, cell) in enumerate(allleaves(root))
         # this cell is not cut; use a tensor-product quadrature to integrate
         # Wait, these are always the same for uncut cells!!!
         # Precompute
-        CutDGD.quadrature!(xq, wq, cell.boundary, x1d, w1d)
+        CloudSBP.quadrature!(xq, wq, cell.boundary, x1d, w1d)
         if plot
             PyPlot.plot(xq[1,:], xq[2,:], "ks", ms=4)
         end
         for I in CartesianIndices(xq)
             xq[I] = (xq[I] - xavg[I[1]])/dx[I[1]] - 0.5
         end
-        CutDGD.poly_basis!(Vq, degree, xq, workq, Val(Dim))
+        CloudSBP.poly_basis!(Vq, degree, xq, workq, Val(Dim))
         for i = 1:num_basis
             moments[i, c] = dot(Vq[:,i], wq)
         end

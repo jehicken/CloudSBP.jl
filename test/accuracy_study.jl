@@ -7,7 +7,7 @@ using PyPlot
 using Random 
 #using BenchmarkTools
 using SparseArrays
-using CutDGD
+using CloudSBP
 using Krylov
 using LinearOperators
 using ILUZero
@@ -51,18 +51,18 @@ for (k, n) in enumerate(num_x)
 
 
     println("timing refine_on_points...")
-    @time CutDGD.refine_on_points!(root, xc)
+    @time CloudSBP.refine_on_points!(root, xc)
     for cell in allleaves(root)
-        split!(cell, CutDGD.get_data)
+        split!(cell, CloudSBP.get_data)
     end
-    println("Number of cells = ",CutDGD.num_leaves(root))
+    println("Number of cells = ",CloudSBP.num_leaves(root))
     println("Number of DOFs  = ",size(xc,2))
-    println("Ratio           = ",CutDGD.num_leaves(root)/size(xc,2))
+    println("Ratio           = ",CloudSBP.num_leaves(root)/size(xc,2))
     println("timing build_nn_stencils...")
-    @time CutDGD.build_nn_stencils!(root, xc, degree)
+    @time CloudSBP.build_nn_stencils!(root, xc, degree)
 
-    CutDGD.set_xref_and_dx!(root, xc)
-    m = CutDGD.calc_moments!(root, degree)
+    CloudSBP.set_xref_and_dx!(root, xc)
+    m = CloudSBP.calc_moments!(root, degree)
 
     num_nodes = size(xc,2)
     dist_ref = ones(num_nodes)
@@ -72,37 +72,37 @@ for (k, n) in enumerate(num_x)
     vol = 1.0
     H_tol .*= 0.1*vol/num_nodes #  0.5e-5
     xc_init = deepcopy(xc)
-    H = CutDGD.opt_norm!(root, xc, degree, H_tol, mu, dist_ref, max_rank)
+    H = CloudSBP.opt_norm!(root, xc, degree, H_tol, mu, dist_ref, max_rank)
    
     println("!!!!!!!!!!!!!!!!  Reset NNs")
-    @time CutDGD.build_nn_stencils!(root, xc, degree)
+    @time CloudSBP.build_nn_stencils!(root, xc, degree)
 
     println("timing build_faces...")
-    @time faces = CutDGD.build_faces(root)
+    @time faces = CloudSBP.build_faces(root)
     println("timing build_boundary_faces...")
-    @time bnd_faces = CutDGD.build_boundary_faces(root)
+    @time bnd_faces = CloudSBP.build_boundary_faces(root)
 
     println("timing mass_matrix...")
-    #CutDGD.set_xref_and_dx!(root, xc) # <-- this has a slight impact on accuracy
-    @time M = CutDGD.mass_matrix(root, xc, degree)
+    #CloudSBP.set_xref_and_dx!(root, xc) # <-- this has a slight impact on accuracy
+    @time M = CloudSBP.mass_matrix(root, xc, degree)
     println("Number of non-zeros in M = ",nnz(M))
     #println("cond(M) = ",cond(Matrix(M)))
-    #H = CutDGD.diag_mass(root, xc, degree)
+    #H = CloudSBP.diag_mass(root, xc, degree)
     #println("min(H) ",minimum(H))
 
-    #H = CutDGD.calc_cell_quad_weights(root, xc, degree)
+    #H = CloudSBP.calc_cell_quad_weights(root, xc, degree)
 
     if false
         # preconditioner trials 
         # root_lo = Cell(SVector(ntuple(i -> 0.0, Dim)), 
         #             SVector(ntuple(i -> 1.0, Dim)),
-        #             CutDGD.CellData(Vector{Int}(), Vector{Face{2,Float64}}()))
-        # CutDGD.refine_on_points!(root_lo, xc)
+        #             CloudSBP.CellData(Vector{Int}(), Vector{Face{2,Float64}}()))
+        # CloudSBP.refine_on_points!(root_lo, xc)
         # for cell in allleaves(root_lo)
-        #     split!(cell, CutDGD.get_data)
+        #     split!(cell, CloudSBP.get_data)
         # end
-        # CutDGD.build_nn_stencils!(root_lo, xc, 0)
-        # M_lo = CutDGD.mass_matrix(root_lo, xc, 0)
+        # CloudSBP.build_nn_stencils!(root_lo, xc, 0)
+        # M_lo = CloudSBP.mass_matrix(root_lo, xc, 0)
         #P = inv(diagm(sqrt.(diag(M))))
         #println("cond(M_lo\\M) = ",cond(P*Matrix(M)*P))
         #P = inv(diagm(diag(M_lo)))
@@ -117,7 +117,7 @@ for (k, n) in enumerate(num_x)
         #PyPlot.plot(E, "ko")
         #PyPlot.yscale("log")
 
-        #Minv = CutDGD.inv_mass_matrix(root, xc, degree)
+        #Minv = CloudSBP.inv_mass_matrix(root, xc, degree)
         #Minv = diagm(1.0./diag(M))
         #H = diagm(1.0./sqrt.(diag(M)))
         #H = diagm(1.0./diag(M_lo))
@@ -150,32 +150,32 @@ for (k, n) in enumerate(num_x)
 
     # root_ho = Cell(SVector(ntuple(i -> 0.0, Dim)), 
     #                 SVector(ntuple(i -> 1.0, Dim)),
-    #                 CutDGD.CellData(Vector{Int}(), Vector{Face{2,Float64}}()))
-    # CutDGD.refine_on_points!(root_ho, xc)
+    #                 CloudSBP.CellData(Vector{Int}(), Vector{Face{2,Float64}}()))
+    # CloudSBP.refine_on_points!(root_ho, xc)
     # for cell in allleaves(root_ho)
-    #     split!(cell, CutDGD.get_data)
+    #     split!(cell, CloudSBP.get_data)
     # end
-    # CutDGD.build_nn_stencils!(root_ho, xc, 2*degree)
-    # # #H = CutDGD.diag_mass(root_ho, xc, 2*degree)
-    # H = CutDGD.diag_mass_ver2(root_ho, xc, 2*degree)
-    # P = CutDGD.prolongation(xc, root, xc, degree)
+    # CloudSBP.build_nn_stencils!(root_ho, xc, 2*degree)
+    # # #H = CloudSBP.diag_mass(root_ho, xc, 2*degree)
+    # H = CloudSBP.diag_mass_ver2(root_ho, xc, 2*degree)
+    # P = CloudSBP.prolongation(xc, root, xc, degree)
     # M = P'*diagm(H)*P 
     # # println("minimum(H) = ", minimum(H))
-    # #H = CutDGD.diag_mass_ver3(root, xc, degree)
+    # #H = CloudSBP.diag_mass_ver3(root, xc, degree)
     # println("minimum(H) = ", minimum(H))
 
 
 
     println("timing build_first_deriv...")
-    #@time S = CutDGD.build_first_deriv(root, faces, xc, degree)
+    #@time S = CloudSBP.build_first_deriv(root, faces, xc, degree)
     levset(x) = 1.0
-#    @time S = CutDGD.build_first_deriv(root, faces, xc, levset, degree)
-    @time S = CutDGD.build_first_deriv(root, faces, xc, degree)
+#    @time S = CloudSBP.build_first_deriv(root, faces, xc, levset, degree)
+    @time S = CloudSBP.build_first_deriv(root, faces, xc, degree)
     println("timing build_boundary_operator...")
     @time bnd_pts, bnd_nrm, bnd_dof, bnd_prj =
-        CutDGD.build_boundary_operator(root, bnd_faces, xc, degree)
+        CloudSBP.build_boundary_operator(root, bnd_faces, xc, degree)
 
-    sbp = CutDGD.SBP(S, bnd_pts, bnd_nrm, bnd_dof, bnd_prj)
+    sbp = CloudSBP.SBP(S, bnd_pts, bnd_nrm, bnd_dof, bnd_prj)
 
     #println("min(H) ",minimum(H))
     #println("cond(M) = ",cond(Array(M)))
@@ -185,14 +185,14 @@ for (k, n) in enumerate(num_x)
     #u = ones(size(u))
     uexact = exp.(xc[1,:])
     dudx = exp.(xc[1,:])
-    #CutDGD.weak_differentiate!(dudx, u, 1, sbp)
+    #CloudSBP.weak_differentiate!(dudx, u, 1, sbp)
     #dudx ./= H
     #dudx = M\dudx
 
-    #H = CutDGD.calc_SBP_norm(sbp, xc, degree, Dim)
-    #H = CutDGD.calc_SBP_quad(xc, 2*degree, Dim)
+    #H = CloudSBP.calc_SBP_norm(sbp, xc, degree, Dim)
+    #H = CloudSBP.calc_SBP_quad(xc, 2*degree, Dim)
     #println("min(H) ",minimum(H))    
-    #P = CutDGD.prolongation(xc, root, xc, degree)
+    #P = CloudSBP.prolongation(xc, root, xc, degree)
 
     Q = sbp.S[1] - sbp.S[1]'
     #b = P'*diagm(H)*P*dudx
@@ -238,7 +238,7 @@ for (k, n) in enumerate(num_x)
     u = vec(xc[1,:])
     println("sum(H*u) = ",dot(H, u))
 
-    CutDGD.weak_differentiate!(dudx, u, 1, sbp)
+    CloudSBP.weak_differentiate!(dudx, u, 1, sbp)
     println("Error dudx - exact = ", norm(dudx - M*ones(num_nodes)))
     #println(dudx - H.*ones(num_nodes))
     if k == 3
@@ -246,7 +246,7 @@ for (k, n) in enumerate(num_x)
         PyPlot.scatter(vec(xc[1,:]), vec(xc[2,:]), s=2.0.*(20 .+ log.(abs.(dudx - H.*ones(num_nodes)))),c="r")
         #PyPlot.scatter(vec(xc[1,:]), vec(xc[2,:]), s=20 .+ log.(abs.(dudx - H.*ones(num_nodes))),c="r")
     end
-    CutDGD.weak_differentiate!(dudx, u, 2, sbp)
+    CloudSBP.weak_differentiate!(dudx, u, 2, sbp)
     println("Error dudy - exact = ", norm(dudx))
 
     println("timing system solve...")    
@@ -287,7 +287,7 @@ for (k, n) in enumerate(num_x)
             max_basis = max(max_basis, length(cell.data.points))
         end
         num_quad = 2*degree
-        x1d, w1d = CutDGD.lgl_nodes(num_quad-1)
+        x1d, w1d = CloudSBP.lgl_nodes(num_quad-1)
         wq = zeros(length(w1d)^Dim)
         xq = zeros(Dim, length(wq))
         xnd = reshape(xq, (Dim, ntuple(i -> num_quad, Dim)...))
@@ -295,8 +295,8 @@ for (k, n) in enumerate(num_x)
         und = reshape(uq, ntuple(i -> num_quad, Dim))
         phi = zeros(length(wq), max_basis)
         for cell in allleaves(root)
-            CutDGD.quadrature!(xq, wq, cell.boundary, x1d, w1d)
-            CutDGD.dgd_basis!(phi, degree, view(xc, :, cell.data.points), xq, Val(Dim))
+            CloudSBP.quadrature!(xq, wq, cell.boundary, x1d, w1d)
+            CloudSBP.dgd_basis!(phi, degree, view(xc, :, cell.data.points), xq, Val(Dim))
             fill!(uq, 0.0)
             num_basis = length(cell.data.points)
             for i = 1:num_basis

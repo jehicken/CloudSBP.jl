@@ -6,7 +6,7 @@
                   SVector(ntuple(i -> 1.0, Dim)))
         c2 = Cell(SVector(ntuple(i -> i == d ? 1.0 : 0.0, Dim)),
                   SVector(ntuple(i -> 1.0, Dim)))
-        face = CutDGD.build_face(d, c1, c2)
+        face = CloudSBP.build_face(d, c1, c2)
         @test face.dir == d 
         @test isapprox(face.boundary.widths[d], 0.0)
         @test isapprox(face.boundary.origin[d], c2.boundary.origin[d])
@@ -23,7 +23,7 @@ end
 @testset "test build_boundary_face: dimension $Dim" for Dim in 1:3 
     for d in [i for i=-Dim:Dim if i != 0]
         c = Cell(SVector(ntuple(i -> 0.0, Dim)), SVector(ntuple(i -> 1.0, Dim)))
-        face = CutDGD.build_boundary_face(d, c)
+        face = CloudSBP.build_boundary_face(d, c)
         @test face.dir == d 
         @test isapprox(face.boundary.widths[abs(d)], 0.0)
         if d > 0 

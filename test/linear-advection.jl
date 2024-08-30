@@ -20,7 +20,7 @@ module LinearAdvection
 # [0.0029380991573373827, 2.8682885173368564e-5, 6.400646426565802e-7, 2.3072738462162074e-8]
 # [6.678549125605828, 5.4858287239522685, 4.793956465745432]
 
-using CutDGD
+using CloudSBP
 using Test
 using RegionTrees
 using StaticArrays: SVector, @SVector, MVector
@@ -131,20 +131,20 @@ for (dindex, degree) in enumerate(deg)
         # end
 
         # refine mesh, build stencil, get face lists
-        CutDGD.refine_on_points!(root, xc)
+        CloudSBP.refine_on_points!(root, xc)
         for cell in allleaves(root)
-            split!(cell, CutDGD.get_data)
+            split!(cell, CloudSBP.get_data)
         end
-        CutDGD.mark_cut_cells!(root, levset)
-        CutDGD.build_nn_stencils!(root, xc, 2*degree-1)
-        CutDGD.set_xref_and_dx!(root, xc)
-        ifaces = CutDGD.build_faces(root)
-        bfaces = CutDGD.build_boundary_faces(root)
-        CutDGD.mark_cut_faces!(ifaces, levset)
-        CutDGD.mark_cut_faces!(bfaces, levset)
+        CloudSBP.mark_cut_cells!(root, levset)
+        CloudSBP.build_nn_stencils!(root, xc, 2*degree-1)
+        CloudSBP.set_xref_and_dx!(root, xc)
+        ifaces = CloudSBP.build_faces(root)
+        bfaces = CloudSBP.build_boundary_faces(root)
+        CloudSBP.mark_cut_faces!(ifaces, levset)
+        CloudSBP.mark_cut_faces!(bfaces, levset)
 
         for cell in allleaves(root)
-            if CutDGD.is_immersed(cell)
+            if CloudSBP.is_immersed(cell)
                 continue
             end
             if length(cell.data.points) <= 0
@@ -152,8 +152,8 @@ for (dindex, degree) in enumerate(deg)
             end
         end
 
-        #m = CutDGD.calc_moments!(root, levset, 2*degree-1, min(degree,2))
-        m = CutDGD.calc_moments!(root, levset, max(2,2*degree-1), 2)
+        #m = CloudSBP.calc_moments!(root, levset, 2*degree-1, min(degree,2))
+        m = CloudSBP.calc_moments!(root, levset, max(2,2*degree-1), 2)
         dist_ref = ones(num_nodes)
         mu = 0.0 #0.1
         max_rank = min(50, num_nodes) # was 50
@@ -161,15 +161,15 @@ for (dindex, degree) in enumerate(deg)
         vol = 1.0
         H_tol .*= 0.1*vol/num_nodes #  0.5e-5
         xc_init = deepcopy(xc)
-        H = CutDGD.opt_norm!(root, xc, 2*degree-1, H_tol, mu, dist_ref, 
+        H = CloudSBP.opt_norm!(root, xc, 2*degree-1, H_tol, mu, dist_ref, 
                              max_rank)
         println("minimum(H) = ",minimum(H))
 
-        sbp = CutDGD.build_first_derivative(root, bc_map, ifaces, bfaces, xc, 
+        sbp = CloudSBP.build_first_derivative(root, bc_map, ifaces, bfaces, xc, 
                                             levset, levset_grad!, degree,
                                             fit_degree=2) #min(degree,2))
 
-        diss = CutDGD.build_dissipation(ifaces, xc, degree, levset, 
+        diss = CloudSBP.build_dissipation(ifaces, xc, degree, levset, 
                                         fit_degree=2) #min(degree, 2))
 
         # Use the SBP operator to define the linear system
@@ -261,7 +261,7 @@ for (dindex, degree) in enumerate(deg)
             # plot the domain and quadrature points 
             fig = figure("quad_points",figsize=(10,10))
 
-            xplot, uplot = CutDGD.output_solution(root, xc, degree, u)
+            xplot, uplot = CloudSBP.output_solution(root, xc, degree, u)
             vmin = minimum(u)
             vmax = maximum(u)
             for (xp, up) in zip(xplot, uplot)
@@ -278,18 +278,18 @@ for (dindex, degree) in enumerate(deg)
             PyPlot.plot(radius*cos.(theta) .+ 0.5, radius*sin.(theta) .+ 0.5, "k-")
 
             # num_quad1d = degree + 1
-            # x1d, w1d = CutDGD.lg_nodes(num_quad1d) # could also use lgl_nodes
+            # x1d, w1d = CloudSBP.lg_nodes(num_quad1d) # could also use lgl_nodes
             # wq = zeros(length(w1d)^Dim)
             # xq = zeros(Dim, length(wq))
             
 
             # for cell in allleaves(root)
-            #     if CutDGD.is_immersed(cell) 
+            #     if CloudSBP.is_immersed(cell) 
             #         continue
             #     end
             #     v = hcat(collect(vertices(cell.boundary))...)
             #     PyPlot.plot(v[1,[1,2,4,3,1]], v[2,[1,2,4,3,1]], "-k")
-            #     if CutDGD.is_cut(cell)
+            #     if CloudSBP.is_cut(cell)
             #         wq_cut, xq_cut = cut_cell_quad(cell.boundary, levset, num_quad1d, 
             #         fit_degree=min(degree,2))
             #         PyPlot.plot(vec(xq_cut[1,:]), vec(xq_cut[2,:]), "gs")
@@ -298,24 +298,24 @@ for (dindex, degree) in enumerate(deg)
             #         fit_degree=min(degree,2))
             #         PyPlot.plot(vec(surf_pts[1,:]), vec(surf_pts[2,:]), "rd")
             #     else
-            #         CutDGD.quadrature!(xq, wq, cell.boundary, x1d, w1d)
+            #         CloudSBP.quadrature!(xq, wq, cell.boundary, x1d, w1d)
             #         PyPlot.plot(vec(xq[1,:]), vec(xq[2,:]), "bs")
             #     end
             # end
             
             # # # plot the interface quad points
             # # for face in ifaces 
-            # #     if CutDGD.is_immersed(face)
+            # #     if CloudSBP.is_immersed(face)
             # #         continue
             # #     end
-            # #     if CutDGD.is_cut(face)
+            # #     if CloudSBP.is_cut(face)
             # #         wq_face, xq_face = cut_face_quad(face.boundary, face.dir, levset,
             # #         num_quad1d, fit_degree=min(degree,2))
             # #         PyPlot.plot(vec(xq_face[1,:]), vec(xq_face[2,:]), "rd")
             # #     else
             # #         wq_face = zeros(length(w1d)^(Dim-1))
             # #         xq_face = zeros(Dim, length(wq_face))
-            # #         CutDGD.face_quadrature!(xq_face, wq_face, face.boundary, x1d, w1d, face.dir)
+            # #         CloudSBP.face_quadrature!(xq_face, wq_face, face.boundary, x1d, w1d, face.dir)
             # #         PyPlot.plot(vec(xq_face[1,:]), vec(xq_face[2,:]), "bd")
             # #     end
                 
@@ -324,17 +324,17 @@ for (dindex, degree) in enumerate(deg)
             # #check_area = 0.0
             # #numf = 0
             # for face in bfaces
-            #     if CutDGD.is_immersed(face)
+            #     if CloudSBP.is_immersed(face)
             #         continue
             #     end
-            #     if CutDGD.is_cut(face)
+            #     if CloudSBP.is_cut(face)
             #         wq_face, xq_face = cut_face_quad(face.boundary, abs(face.dir), levset,
             #         num_quad1d, fit_degree=min(degree,2))
             #         PyPlot.plot(vec(xq_face[1,:]), vec(xq_face[2,:]), "yd", ms=10)
             #     else
             #         wq_face = zeros(length(w1d)^(Dim-1))
             #         xq_face = zeros(Dim, length(wq_face))
-            #         CutDGD.face_quadrature!(xq_face, wq_face, face.boundary, x1d, w1d, abs(face.dir))
+            #         CloudSBP.face_quadrature!(xq_face, wq_face, face.boundary, x1d, w1d, abs(face.dir))
             #         PyPlot.plot(vec(xq_face[1,:]), vec(xq_face[2,:]), "bd")
             #         # if abs(xq_face[1,1] - 0.5) < 1e-10
             #         #     numf += 1

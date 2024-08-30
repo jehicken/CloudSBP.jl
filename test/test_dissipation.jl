@@ -28,17 +28,17 @@ end
         xc = rand(Dim, num_nodes)
 
         # refine mesh, build stencil, get face lists
-        CutDGD.refine_on_points!(root, xc)
+        CloudSBP.refine_on_points!(root, xc)
         for cell in allleaves(root)
-            split!(cell, CutDGD.get_data)
+            split!(cell, CloudSBP.get_data)
         end
         levset = x -> 1.0
-        CutDGD.build_nn_stencils!(root, xc, 2*degree-1)
-        CutDGD.set_xref_and_dx!(root, xc)
-        ifaces = CutDGD.build_faces(root)
+        CloudSBP.build_nn_stencils!(root, xc, 2*degree-1)
+        CloudSBP.set_xref_and_dx!(root, xc)
+        ifaces = CloudSBP.build_faces(root)
 
         # construct the dissipation operator 
-        diss = CutDGD.build_dissipation(ifaces, xc, degree, levset)
+        diss = CloudSBP.build_dissipation(ifaces, xc, degree, levset)
 
         # check that polynomials of `degree` are in the null space of diss
         num_basis = binomial(Dim + degree, Dim)
@@ -73,18 +73,18 @@ end
         end
 
         # refine mesh, build stencil, get face lists
-        CutDGD.refine_on_points!(root, xc)
+        CloudSBP.refine_on_points!(root, xc)
         for cell in allleaves(root)
-            split!(cell, CutDGD.get_data)
+            split!(cell, CloudSBP.get_data)
         end
-        CutDGD.mark_cut_cells!(root, levset)
-        CutDGD.build_nn_stencils!(root, xc, 2*degree-1)
-        CutDGD.set_xref_and_dx!(root, xc)
-        ifaces = CutDGD.build_faces(root)
-        CutDGD.mark_cut_faces!(ifaces, levset)
+        CloudSBP.mark_cut_cells!(root, levset)
+        CloudSBP.build_nn_stencils!(root, xc, 2*degree-1)
+        CloudSBP.set_xref_and_dx!(root, xc)
+        ifaces = CloudSBP.build_faces(root)
+        CloudSBP.mark_cut_faces!(ifaces, levset)
 
         # construct dissipation operator 
-        diss = CutDGD.build_dissipation(ifaces, xc, degree, levset, 
+        diss = CloudSBP.build_dissipation(ifaces, xc, degree, levset, 
                                         fit_degree=min(degree, 2))
 
         # check that polynomials of `degree` are in the null space of diss

@@ -1,4 +1,4 @@
-module CutDGD
+module CloudSBP
 
 using LinearAlgebra
 using SparseArrays

@@ -1,14 +1,14 @@
 ```@meta
-CurrentModule = CutDGD
+CurrentModule = CloudSBP
 ```
 
-# CutDGD
+# CloudSBP
 
-Documentation for [CutDGD](https://github.com/jehicken/CutDGD.jl).
+Documentation for [CloudSBP](https://github.com/jehicken/CloudSBP.jl).
 
 ```@index
 ```
 
 ```@autodocs
-Modules = [CutDGD]
+Modules = [CloudSBP]
 ```

@@ -1,6 +1,6 @@
 module BoundaryQuad
 
-using CutDGD
+using CloudSBP
 using Test
 using RegionTrees
 using StaticArrays: SVector, @SVector, MVector
@@ -68,7 +68,7 @@ num_basis = binomial(Dim + degree, Dim)
 num_nodes = binomial(Dim + 2*degree -1, Dim)
 xc = randn(Dim, num_nodes)
 cell.data.points = 1:num_nodes
-CutDGD.set_xref_and_dx!(cell, xc)
+CloudSBP.set_xref_and_dx!(cell, xc)
 cell.data.cut = true
 
 surf_wts, surf_pts = cut_surf_quad(cell.boundary, levset, degree+1,
@@ -88,7 +88,7 @@ num_basis = binomial(Dim + 2*degree, Dim)
 b = zeros(Dim*num_basis)
 work = zeros((Dim+1)*size(surf_pts,2))
 V = zeros(size(surf_pts,2), num_basis)
-CutDGD.poly_basis!(V, 2*degree, surf_pts, work, Val(Dim))
+CloudSBP.poly_basis!(V, 2*degree, surf_pts, work, Val(Dim))
 for q = 1:size(surf_pts,2) 
     for di = 1:Dim 
         b[num_basis*(di-1)+1:num_basis*di] += V[q,:]*surf_wts[di,q] 
@@ -105,7 +105,7 @@ end
 
 Vq = zeros(num_quad, num_basis)
 work = zeros((Dim+1)*num_quad)
-CutDGD.poly_basis!(Vq, 2*degree, new_pts, work, Val(Dim))
+CloudSBP.poly_basis!(Vq, 2*degree, new_pts, work, Val(Dim))
 
 # construct the linear system 
 A = zeros(Dim*num_basis, num_quad)
