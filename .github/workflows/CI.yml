@@ -58,6 +58,9 @@ jobs:
       - run: |
           julia --project=docs -e '
             using Documenter: DocMeta, doctest
+            using Pkg
+            Pkg.add(url="https://github.com/jehicken/CutQuad.jl.git")
+            Pkg.develop(PackageSpec(path=pwd()))
             using CloudSBP
             DocMeta.setdocmeta!(CloudSBP, :DocTestSetup, :(using CloudSBP); recursive=true)
             doctest(CloudSBP)'
