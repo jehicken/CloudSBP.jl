@@ -49,6 +49,7 @@ jobs:
         run: |
           julia --project=docs/ -e '
             using Pkg
+            Pkg.add(url="https://github.com/jehicken/CutQuad.jl.git")
             Pkg.develop(PackageSpec(path=pwd()))
             Pkg.instantiate()'
       - uses: julia-actions/julia-buildpkg@v1
