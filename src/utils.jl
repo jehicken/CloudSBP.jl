@@ -1,6 +1,16 @@
 # Various functions that do not fit nicely elsewhere 
 
 """
+    get_complex_step(T)
+
+returns an appropriate complex-step size for the given type
+"""
+get_complex_step(::Type{T}) where {T <: Float32} = 1f-20
+get_complex_step(::Type{T}) where {T <: Float64} = 1e-60
+get_complex_step(::Type{T}) where {T <: ComplexF32} = 1f-20
+get_complex_step(::Type{T}) where {T <: ComplexF64} = 1e-60
+
+"""
     solve_min_norm!(w, V, b)
 
 Finds the minimum norm solution to `transpose(V) w = b`.

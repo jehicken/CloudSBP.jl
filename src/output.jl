@@ -3,12 +3,11 @@
     xplot, uplot = output_pyplot(root, xc, degree, u [, num_pts=degree+1])
 
 Outputs "meshgrid" type data for each cell in `root` for plotting the contours 
-of the state `u` using `PyPlot` (i.e. matplotlib).  The solution is of degree 
-`degree` and `num_pts` samples are used in each direction on each cell.
+of the state `u` using Matplotlib.  The solution is of degree `degree` and 
+`num_pts` samples are used in each direction on each cell.
 """
 function output_pyplot(root::Cell{Data, Dim, T, L}, xc, degree, u;
                        num_pts=degree+1) where {Data, Dim, T, L}
-    
     num_cell = 0
     for cell in allleaves(root)
         if !is_immersed(cell)
@@ -57,6 +56,19 @@ function points_vtk(xc; filename::String="points")
     return nothing
 end
 
+"""
+    point_data_vtk(xc, data, label [, filename="point_data"])
+
+Writes the points `xc` to the file `"point_data"`.  `data` is a (possibly 
+empty) `Vector` of arrays that holds data to be associated with each node, and 
+`label` is a label associated with it.
+
+# Example
+```julia
+# write data to plot the norm and its sign at each node
+point_data_vtk(xc, [abs.(H), sign.(H)], ["norm-mag", "norm-sign"])
+```
+"""
 function point_data_vtk(xc, data, label; filename::String="point_data")
     # create the vtk file of the cloud points 
     vtk_points = MeshCell{VTKCellType, Vector{Int}}[]
@@ -79,7 +91,9 @@ end
 
 Creates a VTK file for a scalar solution based on the mesh in `root`, the
 points `xc`, and the solution coefficients in `u`.  The reconstruction used
-is of degree `degree`.  
+is of degree `degree`, although only the solution is only interpolated to the 
+cell vertices at this time (i.e. the cell's themselves are not high-order in 
+Paraview).
 """
 function output_vtk(root::Cell{Data, 2, T, L}, xc, degree, u;
                     num_pts=degree+1, filename="solution",

@@ -220,6 +220,15 @@ function boundary_operators(root::Cell{Data, Dim, T, L}, bc_map, bfaces, xc,
     return E
 end
 
+"""
+    sbp = build_first_derivative(root, bc_map, ifaces, bfaces, xc, levset, 
+                                 levset_grad!, degree [, fit_degree=degree])
+
+Constructs first-derivative SBP operators of degree `degree` based on the 
+background mesh (`root`, `ifaces`, `bfaces`), nodes `xc`, level-set `levset` 
+(and its gradient, `levset_grad!`).  `fit_degree` sets the polynomial degree 
+used by Algoim to approximate the level set.
+"""
 function build_first_derivative(root::Cell{Data, Dim, T, L}, bc_map, ifaces, 
                                 bfaces, xc, levset, levset_grad!, degree; 
                                 fit_degree::Int=degree
@@ -328,6 +337,7 @@ end
 #     end
 #     return bnd_pts, bnd_nrm, bnd_dof, bnd_prj
 # end
+
 
 function weak_differentiate!(dudx, u, di, sbp)
     fill!(dudx, 0)

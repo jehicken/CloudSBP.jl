@@ -601,5 +601,4 @@ function tensor_basis_derivatives!(dV::AbstractArray{T,3}, degree::Int,
         end
     end 
     return nothing
-    
 end

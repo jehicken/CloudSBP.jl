@@ -3,8 +3,6 @@
 
 Returns the DGD mass matrix for degree `degree` based on the mesh in the tree 
 `root` and the centers in `xc`.
-
-
 """
 function mass_matrix(root::Cell{Data, Dim, T, L}, xc, degree
                      ) where {Data, Dim, T, L}

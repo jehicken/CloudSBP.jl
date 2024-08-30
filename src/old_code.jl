@@ -1,3 +1,5 @@
+# Code that is not presently used
+
 """
     uncut_volume_integrate!(rows, cols, Svals, root, points, degree)
 

@@ -1,63 +1,5 @@
-"""
-    w = cell_null_and_part(degree, xc, moments, xref, dx, Val(Dim))
-
-Given a set of total `degree` polynomial `moments`, computes a quadrature that
-is exact for those moments based on the nodes `xc` as well as the null space of
-the quadrature conditions  The arrays `xref` and `dx` are used to shift and
-scale, respectively, the nodes in `xc` to improve conditioning of the
-Vandermonde matrix.  The same scaling and shifts must have been applied when
-computing the integral `moments`.
-"""
-function cell_null_and_part(degree, xc, moments, xref, dx, ::Val{Dim}) where {Dim}
-    @assert( size(xc,1) == length(dx) == length(xref) == Dim,
-             "xc/dx/xref/Dim are inconsistent")
-    num_basis = binomial(Dim + degree, Dim)
-    @assert( length(moments) >= num_basis, "moments has inconsistent size")
-    num_nodes = size(xc, 2)
-    @assert( num_nodes >= num_basis, "fewer nodes than basis functions")
-    # apply an affine transformation to the points xc
-    xc_trans = zero(xc)
-    for I in CartesianIndices(xc)
-        xc_trans[I] = (xc[I] - xref[I[1]])/dx[I[1]] - 0.5
-    end
-    # evaluate the polynomial basis at the node points 
-    workc = zeros(eltype(xc), (Dim+1)*num_nodes)
-    V = zeros(eltype(xc), num_nodes, num_basis)
-    poly_basis!(V, degree, xc_trans, workc, Val(Dim))
-    # find the weights that satisfy the moments
-    w = zeros(num_nodes)
-    solve_min_norm!(w, V, moments[1:num_basis])
-    Z = nullspace(V')
-    return w, Z
-end
-
-"""
-    wp, Z, num_vars = get_null_and_part(root, xc, degree)
-
-Returns a vector of nullspaces, `Z`, and particular solutions, `wp`, for each 
-cell's quadrature problem.  Also returns the total number of degrees of freedom.
-"""
-function get_null_and_part(root::Cell{Data, Dim, T, L}, xc, degree
-                           ) where {Data, Dim, T, L}
-    @assert( size(xc,1) == Dim, "xc coordinates inconsistent with Dim" )
-    num_cell = num_leaves(root)
-    Z = [zeros(T, (0,0)) for i in 1:num_cell]
-    wp = [zeros(T, (0)) for i in 1:num_cell]
-    num_vars = 0
-    for (c, cell) in enumerate(allleaves(root))
-        if is_immersed(cell)
-            continue
-        end
-        # get the nodes in this cell's stencil
-        nodes = view(xc, :, cell.data.points)
-        # get cell quadrature and add to global norm
-        wp[c], Z[c] = cell_null_and_part(degree, nodes, cell.data.moments,
-                                         cell.data.xref, cell.data.dx,
-                                         Val(Dim))
-        num_vars += size(Z[c], 2)
-    end
-    return wp, Z, num_vars
-end
+# This file is not currently used, but it is kept in the repository in case the 
+# methods are needed in the future.
 
 """
     diagonal_norm!(H, root, wp, Z, y)
@@ -86,19 +28,6 @@ function diagonal_norm!(H, root::Cell{Data, Dim, T, L}, wp, Z, y
         end
    end
    return H
-end
-
-function diagonal_norm!(H, root)
-    for (c, cell) in enumerate(allleaves(root))
-        if is_immersed(cell)
-            continue
-        end
-        # add the local contribution
-        for i = 1:length(cell.data.points)            
-            H[cell.data.points[i]] += cell.data.wts[i]
-        end
-   end
-   return nothing
 end
 
 """
@@ -858,73 +787,4 @@ function solve_norm(root, xc, degree, H_tol; verbose::Bool=false,
         ptr += num_dof
     end
     return H, wp, Z
-end
-
-function compute_sparse_constraint(root, wp, Z, H_tol)
-    num_nodes = length(H_tol)
-    rows = Int[]
-    cols = Int[]
-    Avals = Float64[]
-    b = zeros(num_nodes)
-    ptr = 0
-    for (c, cell) in enumerate(allleaves(root))
-        if is_immersed(cell)
-            continue
-        end
-        for i in axes(Z[c],1)
-            for j in axes(Z[c],2)
-                append!(rows, cell.data.points[i])
-                append!(cols, ptr+j)
-                append!(Avals, Z[c][i,j])
-            end
-            b[cell.data.points[i]] -= wp[c][i]
-        end
-        ptr += size(Z[c],2)
-    end
-    b[:] += H_tol
-    return sparse(rows, cols, Avals), b
-end
-
-function solve_norm!(root, xc, degree, H_tol; verbose::Bool=false)
-
-    H = zero(H_tol)
-
-    # get the particular quadrature rules and null space vectors
-    wp, Z, num_vars = get_null_and_part(root, xc, degree)
-    num_nodes = length(H_tol)
-    n = num_vars + 2*num_nodes
-    y = zeros(num_vars)
-
-    # get the sparse constraint, A*y >= b
-    A, b = compute_sparse_constraint(root, wp, Z, H_tol)
-
-    # set up the optimization problem
-    model = Model(Tulip.Optimizer)
-    set_attribute(model, "IPM_IterationsLimit", 20)
-    if verbose
-        set_attribute(model, "OutputLevel", 1)
-    end
-    @variable(model, y[1:num_vars])
-    @objective(model, Min, 0.0)
-    @constraint(model, A*y >= b)
-    optimize!(model)
-    #println("Problem solved and feasible? ",is_solved_and_feasible(model))
-    #solution_summary(model)
-    y = value.(y)
-    success = true
-    if !is_solved_and_feasible(model)
-        y .= 0.0
-        success = false
-    end
-    ptr = 0
-    for (c, cell) in enumerate(allleaves(root))
-        if is_immersed(cell)
-            continue
-        end
-        num_dof = size(Z[c],2)
-        cell.data.wts = wp[c] + Z[c]*y[ptr+1:ptr+num_dof]
-        ptr += num_dof
-    end
-    CutDGD.diagonal_norm!(H, root)
-    return H, success
 end

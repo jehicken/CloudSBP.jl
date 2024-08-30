@@ -426,7 +426,8 @@ function boundary_sym_part(cell::Cell{Data, Dim, T, L}, xc, degree, levset;
 end
 
 """
-    E = symmetric_operator(root, ifaces, bfaces, xc, levset, degree [, fit_degree=degree])
+    E = symmetric_operator(root, ifaces, bfaces, xc, levset, degree
+                           [, fit_degree=degree])
 
 Constructs the symmetric part of a (global), first-derivative SBP operators as
 an `SVector` of sparse matrices; only the symmetric part is stored. The
