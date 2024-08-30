@@ -90,6 +90,7 @@ function build_dissipation(ifaces::Vector{Face{Dim, T, Cell}}, xc, degree,
                            levset; fit_degree::Int=degree) where {Dim, T, Cell}
 
     # count the total number of faces that are not immersed
+    num_nodes = size(xc, 2)
     num_face = length(ifaces) - number_immersed(ifaces)
     dir = zeros(Int, num_face)
     w_face = zeros(T, num_face)
@@ -137,6 +138,6 @@ function build_dissipation(ifaces::Vector{Face{Dim, T, Cell}}, xc, degree,
     end
 
     return Dissipation(dir, w_face, x_face,
-                       sparse(rows_left, cols_left, Dvals_left),
-                       sparse(rows_right, cols_right, Dvals_right))
+                       sparse(rows_left, cols_left, Dvals_left, num_face, num_nodes),
+                       sparse(rows_right, cols_right, Dvals_right, num_face, num_nodes))
 end

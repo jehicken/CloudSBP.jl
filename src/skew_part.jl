@@ -261,6 +261,8 @@ function skew_operator(root::Cell{Data, Dim, T, L}, ifaces, bfaces, xc, levset,
         end
     end
 
-    S = SVector(ntuple(d -> sparse(rows[d], cols[d], Svals[d]), Dim))
+    num_nodes = size(xc,2)
+    S = SVector(ntuple(d -> sparse(rows[d], cols[d], Svals[d], num_nodes,
+                       num_nodes), Dim))
     return S
 end
