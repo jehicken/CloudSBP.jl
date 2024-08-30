@@ -221,10 +221,6 @@ Vandermonde matrix.  The same scaling and shifts must have been applied when
 computing the integral `moments`.
 """
 function cell_null_and_part(degree, xc, moments, xref, dx, ::Val{Dim}) where {Dim}
-    println("size(xc,1) = ",size(xc,1))
-    println("length(dx) = ",length(dx))
-    println("length(xref) = ",length(xref))
-    println("Dim = ",Dim)
     @assert( size(xc,1) == length(dx) == length(xref) == Dim,
              "xc/dx/xref/Dim are inconsistent")
     num_basis = binomial(Dim + degree, Dim)
