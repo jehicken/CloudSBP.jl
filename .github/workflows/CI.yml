@@ -50,10 +50,11 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - run: |
           julia --project=docs -e '
-            using Pkg;
-            Pkg.activate(".");
-            Pkg.rm("CutQuad"); 
-            Pkg.add(url="https://github.com/jehicken/CutQuad.jl.git")
+            using Pkg
+            Pkg.develop(PackageSpec(path=pwd()))
+            Pkg.instantiate()'
+      - run: |
+          julia --project=docs -e '
             using Documenter: DocMeta, doctest
             using CloudSBP
             DocMeta.setdocmeta!(CloudSBP, :DocTestSetup, :(using CloudSBP); recursive=true)
