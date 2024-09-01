@@ -1,7 +1,6 @@
 # CloudSBP
 
-[![Stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://jehicken.github.io/CloudSBP.jl/stable/)
-[![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://jehicken.github.io/CloudSBP.jl/dev/)
+[![Dev](https://img.shields.io/badge/docs-dev-blue.svg)](https://jehicken.github.io/CloudSBP.jl/)
 [![Build Status](https://github.com/jehicken/CloudSBP.jl/actions/workflows/CI.yml/badge.svg?branch=main)](https://github.com/jehicken/CloudSBP.jl/actions/workflows/CI.yml?query=branch%3Amain)
 
 This Julia package is a research code for constructing summation-by-parts (SBP) finite-difference operators on point clouds over complex geometries.  It is the library that implements the algorithm and produced the results in the following paper:

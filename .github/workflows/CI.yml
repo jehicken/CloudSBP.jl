@@ -39,20 +39,11 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      statuses: write
     steps:
       - uses: actions/checkout@v3
       - uses: julia-actions/setup-julia@v1
         with:
           version: '1'
-      - name: Configure doc environment
-        run: |
-          julia --project=docs/ -e '
-            using Pkg
-            Pkg.add(url="https://github.com/jehicken/CutQuad.jl.git")
-            Pkg.add(url="https://github.com/jehicken/CloudSBP.jl.git")
-            Pkg.develop(PackageSpec(path=pwd()))
-            Pkg.instantiate()'
       - uses: julia-actions/julia-buildpkg@v1
       - uses: julia-actions/julia-docdeploy@v1
         env:
@@ -62,8 +53,8 @@ jobs:
             using Documenter: DocMeta, doctest
             using Pkg
             Pkg.add(url="https://github.com/jehicken/CutQuad.jl.git")
-            Pkg.add(url="https://github.com/jehicken/CloudSBP.jl.git")
             Pkg.develop(PackageSpec(path=pwd()))
+            Pkg.instantiate()
             using CloudSBP
             DocMeta.setdocmeta!(CloudSBP, :DocTestSetup, :(using CloudSBP); recursive=true)
             doctest(CloudSBP)'
