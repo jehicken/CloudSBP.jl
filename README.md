@@ -253,13 +253,12 @@ for k = 1:num_sample
             funerr[i, k, dindex] = abs(fun - fun_exact)
             println("fun error = ",funerr[i, k, dindex])
 
-            if dindex == 10 && i == 1 && k == 1
-                #CloudSBP.points_vtk(xc, filename="./paraview/study-points")
-                #CloudSBP.output_vtk(root, xc, degree, u, filename="./paraview/study-sol")
+            if degree == 10 && i == 1 && k == 1
+                # select `degree` and `i` to write error to VTK file
                 CloudSBP.points_vtk(xc, filename="points")
                 du = abs.(du)
                 CloudSBP.output_vtk(mesh.root, xc, degree, du, filename="error")
-                error("TEMP!!!")
+                error("Wrote error file; stopping convergence study!!!")
             end
 
         end
