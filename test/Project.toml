@@ -6,3 +6,7 @@ RegionTrees = "dee08c22-ab7f-5625-9660-a9af2021b33f"
 SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
 StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[compat]
+julia = "^1.8"
+CutQuad = "0.3.0"
