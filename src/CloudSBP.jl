@@ -16,6 +16,7 @@ export CellData, Face
 
 include("utils.jl")
 include("orthopoly.jl")
+include("cell.jl")
 include("face.jl")
 include("mesh.jl")
 include("quadrature.jl")

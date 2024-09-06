@@ -14,7 +14,7 @@ function apply_dissipation(diss, x)
 end
 
 # passes for Dim = 3, but takes 6 minutes
-@testset "test build_dissipation: dimension $Dim, degree $degree" for Dim in 1:2, degree in 1:4
+@testset "test build_face_dissipation: dimension $Dim, degree $degree" for Dim in 1:2, degree in 1:4
 
     @testset "uncut domain" begin
 
@@ -35,10 +35,10 @@ end
         levset = x -> 1.0
         CloudSBP.build_nn_stencils!(root, xc, 2*degree-1)
         CloudSBP.set_xref_and_dx!(root, xc)
-        ifaces = CloudSBP.build_faces(root)
+        ifaces = CloudSBP.build_interfaces(root)
 
         # construct the dissipation operator 
-        diss = CloudSBP.build_dissipation(ifaces, xc, degree, levset)
+        diss = CloudSBP.build_face_dissipation(ifaces, xc, degree, levset)
 
         # check that polynomials of `degree` are in the null space of diss
         num_basis = binomial(Dim + degree, Dim)
@@ -80,11 +80,11 @@ end
         CloudSBP.mark_cut_cells!(root, levset)
         CloudSBP.build_nn_stencils!(root, xc, 2*degree-1)
         CloudSBP.set_xref_and_dx!(root, xc)
-        ifaces = CloudSBP.build_faces(root)
+        ifaces = CloudSBP.build_interfaces(root)
         CloudSBP.mark_cut_faces!(ifaces, levset)
 
         # construct dissipation operator 
-        diss = CloudSBP.build_dissipation(ifaces, xc, degree, levset, 
+        diss = CloudSBP.build_face_dissipation(ifaces, xc, degree, levset, 
                                         fit_degree=min(degree, 2))
 
         # check that polynomials of `degree` are in the null space of diss

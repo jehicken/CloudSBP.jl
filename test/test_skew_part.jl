@@ -284,7 +284,7 @@ end
         CloudSBP.build_nn_stencils!(root, xc, 2*degree-1)
         CloudSBP.set_xref_and_dx!(root, xc)
         m = CloudSBP.calc_moments!(root, 2*degree-1)
-        ifaces = CloudSBP.build_faces(root)
+        ifaces = CloudSBP.build_interfaces(root)
         bfaces = CloudSBP.build_boundary_faces(root)
 
         # construct the norm, skew and symmetric operators 
@@ -347,7 +347,7 @@ end
         CloudSBP.build_nn_stencils!(root, xc, 2*degree-1)
         CloudSBP.set_xref_and_dx!(root, xc)
         m = CloudSBP.calc_moments!(root, levset, 2*degree-1, min(degree,2))
-        ifaces = CloudSBP.build_faces(root)
+        ifaces = CloudSBP.build_interfaces(root)
         bfaces = CloudSBP.build_boundary_faces(root)
         CloudSBP.mark_cut_faces!(ifaces, levset)
         CloudSBP.mark_cut_faces!(bfaces, levset)

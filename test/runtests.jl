@@ -22,6 +22,10 @@ Random.seed!(42)
         include("test_orthopoly.jl")
     end
 
+    @testset "test cell-related routines" begin 
+        include("test_cell.jl")
+    end
+
     @testset "test face-related routines" begin 
         include("test_face.jl")
     end

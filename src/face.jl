@@ -1,3 +1,4 @@
+# Structures and methods for mesh faces (interfaces and boundary faces)
 
 """
 Struct for interfaces and boundary faces of cells.
@@ -190,93 +191,4 @@ function get_neighbors(cell::Cell, side)::Vector{Cell}
     opposite_side = div(side - 1, 2)*2 + side % 2 + 1
     neighbors = leaves_on_side(nbr, opposite_side)
     return neighbors
-end
-
-"""
-    faces = build_faces(root)
-
-Creates an array of faces between adjacent leaves (i.e. cells) of the tree 
-`root`.  This array does not include boundary faces that have only one adjacent 
-cell; see `build_boundary_faces` for such a list.
-"""
-function build_faces(root::Cell{Data, Dim, T, L}) where {Data, Dim, T, L}
-    face_list = Vector{Face{Dim, T, Cell{Data, Dim, T, L}}}()
-    for leaf in allleaves(root)
-        for d = 1:Dim
-            neighbors = get_neighbors(leaf, d*2-1)
-            #println("length(neighbors) = ",length(neighbors))
-            for nbr in neighbors
-                face = build_face(d, nbr, leaf)
-                push!(face_list, face)
-                # add face to leaf and nbr's lists
-                face_index = length(face_list)
-                push!(leaf.data.faces, face_index)
-                push!(nbr.data.faces, face_index)
-            end
-        end
-    end
-    return face_list
-end
-
-"""
-    faces = build_boundary_faces(root)
-
-Creates an array of boundary faces of the tree `root`.  Boundary faces are 
-faces of the leaves of `root` that touch the the East, West, North, ...etc 
-sides of `root`.
-"""
-function build_boundary_faces(root::Cell{Data, Dim, T, L}) where {Data,Dim,T,L}
-    face_list = Vector{Face{Dim, T, Cell{Data, Dim, T, L}}}()
-    for leaf in allleaves(root)
-        for d = 1:Dim 
-            if abs(leaf.boundary.origin[d] - root.boundary.origin[d]) < 1e-14
-                # This leaf is on side 2*d - 1, so add a face 
-                face = build_boundary_face(-d, leaf)
-                push!(face_list, face)
-                face_index = length(face_list)
-                push!(leaf.data.bfaces, face_index)
-            end 
-            if abs(leaf.boundary.origin[d] + leaf.boundary.widths[d] -
-                   root.boundary.origin[d] - root.boundary.widths[d]) < 1e-14
-                # This leaf is on side 2*d, so add the appropriate face
-                face = build_boundary_face(d, leaf)
-                push!(face_list, face)
-                face_index = length(face_list)
-                push!(leaf.data.bfaces, face_index)
-            end
-        end
-    end
-    return face_list
-end
-
-"""
-    mark_cut_faces!(faces, levset)
-
-Identifies faces in the list `faces` that _may be_ cut be the level-set levset.
-"""
-function mark_cut_faces!(faces, levset)
-    for face in faces
-        face.cut = is_cut(face.boundary, levset)
-        if !face.cut && is_center_immersed(face.boundary, levset)
-            # This face is definitely not cut, and its center is immersed, so 
-            # entire face must be immersed.
-            face.immersed = true
-        end
-    end
-end
-
-"""
-    count = number_immersed(faces)
-
-Returns the number of `faces` that are definitely immersed.  Note that this is 
-a lower bound, since the immeresed check is conservative.
-"""
-function number_immersed(faces)
-    count = 0
-    for face in faces
-        if is_immersed(face)
-            count += 1
-        end
-    end
-    return count
 end

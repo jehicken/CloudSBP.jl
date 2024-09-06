@@ -75,8 +75,8 @@ function interface_interp(face::Face{Dim, T, Cell}, xc_left, xc_right, degree,
 end
 
 """
-    face_diss = build_dissipation(ifaces, xc, degree, levset,
-                                  [, fit_degree=degree])
+    face_diss = build_face_dissipation(ifaces, xc, degree, levset,
+                                       [, fit_degree=degree])
 
 Returns a `Dissipation` type that can be used for artificial dissipation over a 
 point cloud.  `iface` is a list of interfaces, and `xc[:,i]` are the 
@@ -86,8 +86,9 @@ level-set geometry, and the optional kwarg `fit_degree` indicates the degree of
 the Bernstein polynomials used to approximate the level-set within the Algoim 
 library.
 """
-function build_dissipation(ifaces::Vector{Face{Dim, T, Cell}}, xc, degree,
-                           levset; fit_degree::Int=degree) where {Dim, T, Cell}
+function build_face_dissipation(ifaces::Vector{Face{Dim, T, Cell}}, xc, degree,
+                                levset; fit_degree::Int=degree
+                                ) where {Dim, T, Cell}
 
     # count the total number of faces that are not immersed
     num_nodes = size(xc, 2)

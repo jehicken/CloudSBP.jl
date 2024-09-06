@@ -221,26 +221,26 @@ function boundary_operators(root::Cell{Data, Dim, T, L}, bc_map, bfaces, xc,
 end
 
 """
-    sbp = build_first_derivative(root, bc_map, ifaces, bfaces, xc, levset, 
-                                 levset_grad!, degree [, fit_degree=degree])
+    sbp = build_first_derivative(mesh, bc_map, xc, levset, levset_grad!, degree
+                                 [, fit_degree=degree])
 
 Constructs first-derivative SBP operators of degree `degree` based on the 
-background mesh (`root`, `ifaces`, `bfaces`), nodes `xc`, level-set `levset` 
-(and its gradient, `levset_grad!`).  `fit_degree` sets the polynomial degree 
-used by Algoim to approximate the level set.
+background `mesh`, nodes `xc`, level-set `levset` (and its gradient, 
+`levset_grad!`).  `fit_degree` sets the polynomial degree used by Algoim to 
+approximate the level set.  `bc_map` determines the type of each boundary.
+
+**PRE**: The cell norms must be stored in the cell data.wts[:] attribute.
 """
-function build_first_derivative(root::Cell{Data, Dim, T, L}, bc_map, ifaces, 
-                                bfaces, xc, levset, levset_grad!, degree; 
-                                fit_degree::Int=degree
-                                ) where {Data, Dim, T, L}
+function build_first_derivative(mesh, bc_map, xc, levset, levset_grad!, degree; 
+                                fit_degree::Int=degree)
     H = zeros(size(xc,2))
     #m = calc_moments!(root, levset, 2*degree-1, fit_degree)
     #diagonal_norm!(H, root, xc, 2*degree-1)
-    diagonal_norm!(H, root)
-    S = CloudSBP.skew_operator(root, ifaces, bfaces, xc, levset, degree,
-                             fit_degree=fit_degree)
-    E = boundary_operators(root, bc_map, bfaces, xc, levset, levset_grad!, 
-                           degree, fit_degree=fit_degree)
+    diagonal_norm!(H, mesh.root)
+    S = CloudSBP.skew_operator(mesh.root, mesh.ifaces, mesh.bfaces, xc, levset, 
+                               degree, fit_degree=fit_degree)
+    E = boundary_operators(mesh.root, bc_map, mesh.bfaces, xc, levset, 
+                           levset_grad!, degree, fit_degree=fit_degree)
     return SBP(H, S, E)
 end
 

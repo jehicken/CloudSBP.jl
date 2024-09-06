@@ -198,6 +198,7 @@ Assembles the diagonal norm `H` using the particular cell-based norm stored in
 the cells' `data.wts` field.  `root` stores the mesh.
 """
 function diagonal_norm!(H, root)
+    fill!(H, zero(eltype(H)))
     for (c, cell) in enumerate(allleaves(root))
         if is_immersed(cell)
             continue
