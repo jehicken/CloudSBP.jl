@@ -537,7 +537,8 @@ function apply_approx_inverse!(p::AbstractVector{T}, g::AbstractVector{T},
 end
 
 """
-    H = opt_norm!(root, xc, degree, H_tol, mu, dist_ref, max_rank)
+    H = opt_norm!(root, xc, degree, H_tol, mu, dist_ref, max_rank
+                  [, hist_file=nothing, verbose=false, max_iter=1000])
 
 Finds an approximate minimizer for the objective `penalty` with respect to the
 node coordinates `xc` and based on the background mesh `root`.  Once an
@@ -549,11 +550,10 @@ Hessian.  See `penalty` for explanations of the other parameters.
 """
 function opt_norm!(root::Cell{Data, Dim, T, L}, xc, degree, H_tol, mu, dist_ref,
                    max_rank; hist_file::Union{String,Nothing}=nothing,
-                   verbose::Bool=false
+                   verbose::Bool=false, max_iter::Int=1000
                    ) where {Data, Dim, T, L}
     num_nodes = size(xc, 2)
     xc_init = copy(xc)
-    max_iter = 1000
     max_line = 10
     H = zeros(num_nodes)
     g = zeros(num_nodes*Dim)

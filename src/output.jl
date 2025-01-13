@@ -90,15 +90,15 @@ end
                      filename="solution", save=true])
 
 Creates a VTK file for a scalar solution based on the mesh in `root`, the
-points `xc`, and the solution coefficients in `u`.  The reconstruction used
-is of degree `degree`, although only the solution is only interpolated to the 
-cell vertices at this time (i.e. the cell's themselves are not high-order in 
+points `xc`, and the solution coefficients in `u`.  The reconstruction used is
+of degree `degree`, although the solution is only interpolated to the cell 
+vertices at this time (i.e. the cell's themselves are not high-order in 
 Paraview).
 """
 function output_vtk(root::Cell{Data, 2, T, L}, xc, degree, u;
                     num_pts=degree+1, filename="solution",
                     save=true) where {Data, T, L}
-    
+
     # count number of cells that are not immersed
     Dim = 2
     num_cell = 0
@@ -128,14 +128,57 @@ function output_vtk(root::Cell{Data, 2, T, L}, xc, degree, u;
 
         ptr += 2^Dim
     end
-    
+
+    # create the vtk file of the solution and write it if necessary
+    vtk = vtk_grid(filename, coords, vtk_cells)
+    vtk_point_data(vtk, data, "scalar solution")
+    if save
+        file = vtk_save(vtk)
+    end
+    return vtk
+end
+
+function output_vtk(root::Cell{Data, 3, T, L}, xc, degree, u;
+                    num_pts=degree+1, filename="solution",
+                    save=true) where {Data, T, L}
+
+    # count number of cells that are not immersed
+    Dim = 3
+    num_cell = 0
+    for cell in allleaves(root)
+        if !is_immersed(cell)
+            num_cell += 1
+        end
+    end
+
+    # generate the vtk points, cells, and data
+    coords = zeros(Dim, (2^Dim)*num_cell)
+    data = zeros((2^Dim)*num_cell)
+    vtk_cells = MeshCell{VTKCellType, Vector{Int}}[]
+    ptr = 0
+    for cell in allleaves(root)
+        if is_immersed(cell) continue end
+        coords[:, ptr+1:ptr+2^Dim] = hcat(collect(vertices(cell.boundary))...)
+        v = [ptr+1; ptr+3; ptr+7; ptr+5; ptr+2; ptr+4; ptr+8; ptr+6]
+        push!(vtk_cells, MeshCell(VTKCellTypes.VTK_HEXAHEDRON, v))
+
+        # interpolate the solution to the print nodes
+        xc_cell = view(xc, :, cell.data.points)
+        interp = zeros(2^Dim, length(cell.data.points))
+        build_interpolation!(interp, degree, xc_cell, coords[:,ptr+1:ptr+2^Dim],
+                             cell.data.xref, cell.data.dx)
+        data[ptr+1:ptr+2^Dim] = interp*u[cell.data.points]
+
+        ptr += 2^Dim
+    end
+
     # create the vtk file of the solution and write it if necessary
     vtk = vtk_grid(filename, coords, vtk_cells) 
     vtk_point_data(vtk, data, "scalar solution")
     if save
         file = vtk_save(vtk)
     end
-    return vtk 
+    return vtk
 end
 
 """
