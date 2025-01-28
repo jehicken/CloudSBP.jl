@@ -57,10 +57,12 @@ function is_cut(rect::HyperRectangle{Dim,T}, levset::Function;
                 fit_degree::Int=2) where {Dim, T}
     # if the level-set is two-times larger than the radius of the hypersphere 
     # enclosing `rect`, we assume that the cell is not cut and not immersed
-    xc = rect.origin + 0.5*rect.widths
-    if levset(xc) > norm(rect.widths)
-        return false
-    end
+
+    #xc = rect.origin + 0.5*rect.widths
+    #if levset(xc) > norm(rect.widths)
+    #    return false
+    #end
+
     # If we get here, the cell may be fully immersed or it may be cut...and it # may even be neither of these.
     # This is a bit of a hack; we call Algoim and if there are no quadrature 
     # points, we assume this cell is immersed, otherwise we assume it is cut.

@@ -1,0 +1,8 @@
+[deps]
+CloudSBP = "f6ad8f8e-aa95-4eb2-a6f4-7dbdad895a20"
+CutQuad = "b130fd59-4ea5-47f9-9e42-9608cf6d689d"
+CxxWrap = "1f15a43c-97ca-5a2a-ae31-89f07a497df4"
+DifferentialEquations = "0c46a032-eb83-5123-abaf-570d42b7fbaa"
+SpecialFunctions = "276daf66-3868-5448-9aa4-cd146d93841b"
+SummationByPartsOperators = "9f78cca6-572e-554e-b819-917d2f1cf240"
+WriteVTK = "64499a7a-5c06-52f2-abe2-ccb03c286192"

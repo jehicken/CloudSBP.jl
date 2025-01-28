@@ -7,6 +7,8 @@ This Julia package is a research code for constructing summation-by-parts (SBP) 
 
 > Jason Hicken, Ge Yan, and Sharanjeet Kaur, _"Constructing stable, high-order finite-difference operators on point clouds over complex geometries,"_ submitted (see also this [preprint](http://arxiv.org/abs/2409.00809) on arxiv)
 
+If you are interested in reproducing the results from this paper, please see the folder `paper-scripts` and the `README.md` file within it.
+
 The implementation of the construction algorithm is not particularly efficient at this time; however, once the SBP operators are constructed as sparse arrays, they should be reasonably efficient to use.
 
 ## Installation
@@ -19,7 +21,7 @@ The Package is tested against Julia versions 1.8 and 1.10 only, so if you are us
 
 As a research code, CloudSBP does not have a lot of documentation.  The `docs` badge above will bring you to the `Documenter.jl` generated documentation for each function.  The test files may provide some insights as well.
 
-The example below might be useful.  It is similar to the code used to generate the data for L2 and functional error studies in the paper above.  If you copy this into a file (e.g. `example.jl`), you can run it by using `include("example.jl")` from the Julia REPL.
+For just trying the code, the example below might be useful.  It is similar to the code used to generate the data for L2 and functional error studies in the paper above.  If you copy this into a file (e.g. `example.jl`), you can run it by using `include("example.jl")` from the Julia REPL.
 
 ```julia
 module AccuracyStudyAnnulus
